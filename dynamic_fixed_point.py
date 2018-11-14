@@ -1,7 +1,6 @@
 import tensorflow as tf
 import numpy as np
 
-# from py_func_custom import *
 
 def weight_quantization(X, target_overflow_rate, bits, integer_bits, stochastic=False):
     '''
@@ -130,7 +129,7 @@ class Layer_q:
 
 class Conv2d_q(Layer_q):
     def __init__(self, name, bits, ksize, strides, padding, use_bias=True, weight_decay=0,
-        target_overflow_rate=0, input_range=2, weight_range=2, bias_range=2, grad_range=2):
+        target_overflow_rate=0, input_range=2, weight_range=2, bias_range=2, grad_range=1):
         '''
         Quantized 2d convolution.
 
@@ -233,12 +232,13 @@ class Conv2d_q(Layer_q):
             # print("--- Small value collected ---")
             accu_value_np += grad_np.copy()
             self.accu_value = tf.convert_to_tensor(accu_value_np, dtype=tf.float32)
+
             if (np.mean(np.absolute(accu_value_np)) > eps_np):
                 self.init_flag = True
                 if (np.mean(accu_value_np) > 0):
-                    reminder_np = accu_value_np.copy() - eps_np.copy()
+                    reminder_np = accu_value_np.copy() - (accu_value_np.copy() // eps_np.copy()) * eps_np.copy()
                 else:
-                    reminder_np = accu_value_np.copy() + eps_np.copy()
+                    reminder_np = accu_value_np.copy() + ((-accu_value_np.copy()) // eps_np.copy()) * eps_np.copy()
                 self.reminder = tf.convert_to_tensor(reminder_np, dtype=tf.float32)
 
                 self.rem_flag = True
@@ -255,77 +255,14 @@ class Conv2d_q(Layer_q):
         self.grad = grad
         self.eps =  tf.cast( 1/ (2 ** (-1 - self.grad_range + self.bits)), tf.float32)    # the smallest value
         # compute the avg value
-        self.grad_avg = tf.reduce_mean(tf.abs(self.grad))
+        # self.grad_avg = tf.reduce_mean(tf.abs(self.grad))
 
-        if self.init_f == True:
-            self.init_f = False
-            self.reminder = self.grad   # buffer
-            self.accu_value = self.grad # buffer
+        # if self.init_f == True:
+        #     self.init_f = False
+        #     self.reminder = self.grad   # buffer
+        #     self.accu_value = self.grad # buffer
 
-        pre_conv_op = self.pre_conv_func()
-
-        # # #
-        # def true_func1():
-        #     print("------ Gotya ------")
-        #     self.init_flag = False
-        #     if self.rem_flag == True:
-        #         print("--- Heritage received ---")
-        #         return self.reminder
-        #     else:
-        #         return self.grad
-
-        # def true_func2():
-        #     print("------ Gotcha ------")
-        #     self.init_flag = True
-        #     ans = tf.cond(
-        #         tf.greater(tf.reduce_mean(self.accu_value), 0.0),   # pred
-        #         tf.substract(self.accu_value, eps), # inner_true_fn
-        #         tf.substract(eps, self.accu_value)  # inner_false_fn
-        #     )
-        #     self.rem_flag = True
-        #     self.grad = self.accu_value
-        #     return ans
-
-        # def false_func1():
-        #     print("------- Not yet ------")
-        #     return self.grad
-
-        # if self.init_flag == True:
-        #     self.accu_value = tf.cond(
-        #         tf.greater(eps, self.grad_avg),     # pred
-        #         true_func1,      # true_fn
-        #         false_func1
-        #         # lambda: self.grad     # false_fn, grad is used for buffer
-        #     )
-
-        # else:
-        #     print("--- Small value collected ---")
-        #     tf.assign_add(self.accu_value, self.grad)
-        #     self.reminder = tf.cond(
-        #         tf.greater(tf.reduce_mean(tf.abs(self.accu_value)), eps),   # pred
-        #         true_func2,     # true_fn
-        #         lambda: self.grad    # false_fn, grad is used for buffer
-        #     )
-        
-        # if (self.init_flag==True) and (tf.greater(eps, tf.abs(grad))==True):
-        #     self.init_flag = False
-        #     if self.rem_flag == True:
-        #         self.accu_value = self.reminder
-        #     else:
-        #         self.accu_value = grad
-        # elif self.init_flag == False:
-        #     tf.assign_add(self.accu_value, grad)
-        #     if(tf.greater(tf.abs(self.accu_value), eps)==True):
-        #         self.init_flag = True
-        #         if tf.greater(0.0, self.accu_value)==True:
-        #             self.reminder = tf.substract(eps, self.accu_value)
-        #             print("Nah!")
-        #         elif tf.greater(self.accu_value, 0.0)==True:
-        #             self.reminder = tf.substract(self.accu_value, eps)
-        #             print("Yeah!")
-
-        #         self.rem_flag = True
-        #         grad = self.accu_value
+        # pre_conv_op = self.pre_conv_func()    # (m)
 
         self.gradq = weight_quantization(self.grad, self.target_overflow_rate,
             self.bits, self.grad_range, stochastic=stochastic)
@@ -348,7 +285,7 @@ class Conv2d_q(Layer_q):
 
 class Dense_q(Layer_q):
     def __init__(self, name, bits, in_units, units, use_bias=True, weight_decay=0,
-        target_overflow_rate=0, input_range=2, weight_range=2, bias_range=2, grad_range=2):
+        target_overflow_rate=0, input_range=2, weight_range=2, bias_range=2, grad_range=1):
         '''
         Quantized fully connected layer.
 
@@ -388,8 +325,9 @@ class Dense_q(Layer_q):
         self.target_overflow_rate = target_overflow_rate
         self.weight_decay = weight_decay
 
-        self.init_flag = True
-        self.rem_flag = False
+        self.init_flag = np.ones([32, 10], dtype=int)
+        self.rem_flag = np.zeros([32, 10], dtype=int)
+        
         self.init_f = True
 
     def forward(self, X):
@@ -423,42 +361,46 @@ class Dense_q(Layer_q):
 
     def pre_dense_func(self):
         out = tf.py_func(self._pre_dense_func,
-                [self.grad_avg, self.grad, self.eps, self.accu_value, self.reminder],
+                [self.grad, self.eps, self.accu_value, self.reminder],
                 tf.float32
             )
 
         return out
 
-    def _pre_dense_func(self, grad_avg_np, grad_np, eps_np, accu_value_np, reminder_np):
-        if self.init_flag == True:
-            # print("------ Gotya ------")
-            if eps_np > grad_avg_np:
-                # print("------ Aha ------")
-                self.init_flag = False
-                if self.rem_flag == True:
-                    accu_value_np = reminder_np.copy() + grad_np.copy()
+    def _pre_dense_func(self, grad_np, eps_np, accu_value_np, reminder_np):
+        dim1 = np.shape(grad_np)[0]
+        dim2 = np.shape(grad_np)[1]
+        for i in range(dim1):
+            for j in range(dim2):
+                if self.init_flag[i,j] == 1:
+                    # print("------ Gotya ------")
+                    if eps_np > np.absolute(grad_np)[i,j]:
+                        # print("------ Aha ------")
+                        self.init_flag[i,j] = 0
+                        if self.rem_flag[i,j] == 1:
+                            accu_value_np[i,j] = reminder_np.copy()[i,j] + grad_np.copy()[i,j]
+                        else:
+                            accu_value_np[i,j] = grad_np.copy()[i,j]
+                        self.accu_value = tf.convert_to_tensor(accu_value_np, dtype=tf.float32)
+                
                 else:
-                    accu_value_np = grad_np.copy()
-                self.accu_value = tf.convert_to_tensor(accu_value_np, dtype=tf.float32)
-        
-        else:
-            print("--- Small value collected ---")
-            accu_value_np += grad_np.copy()
-            self.accu_value = tf.convert_to_tensor(accu_value_np, dtype=tf.float32)
-            if (np.mean(np.absolute(accu_value_np)) > eps_np):
-                self.init_flag = True
-                if (np.mean(accu_value_np) > 0):
-                    reminder_np = accu_value_np.copy() - eps_np.copy()
-                else:
-                    reminder_np = accu_value_np.copy() + eps_np.copy()
-                self.reminder = tf.convert_to_tensor(reminder_np, dtype=tf.float32)
+                    # print("--- Small value collected ---")
+                    accu_value_np[i,j] += grad_np.copy()[i,j]
+                    self.accu_value = tf.convert_to_tensor(accu_value_np, dtype=tf.float32)
 
-                self.rem_flag = True
-                grad_np = accu_value_np.copy()
-                self.grad = tf.convert_to_tensor(grad_np, dtype=tf.float32)
+                    if (np.absolute(accu_value_np)[i,j] > eps_np):
+                        self.init_flag[i,j] = 1
+                        if (accu_value_np[i,j] > 0):
+                            reminder_np[i,j] = accu_value_np.copy()[i,j] - (accu_value_np.copy()[i,j] // eps_np.copy()) * eps_np.copy()
+                        else:
+                            reminder_np[i,j] = accu_value_np.copy()[i,j] + ((-accu_value_np.copy()[i,j]) // eps_np.copy()) * eps_np.copy()
+                        self.reminder = tf.convert_to_tensor(reminder_np, dtype=tf.float32)
+
+                        self.rem_flag[i,j] = 1
+                        grad_np[i,j] = accu_value_np.copy()[i,j]
+                        self.grad = tf.convert_to_tensor(grad_np, dtype=tf.float32)
 
         return grad_np
-
 
 
     def backward(self, grad, stochastic):
@@ -466,15 +408,14 @@ class Dense_q(Layer_q):
         self.grad = grad
 
         self.eps =  tf.cast( 1/ (2 ** (-1 - self.grad_range + self.bits)), tf.float32)    # the smallest value
-        # compute the avg value
-        self.grad_avg = tf.reduce_mean(tf.abs(self.grad))
+        # # compute the avg value
+        # self.grad_avg = tf.reduce_mean(tf.abs(self.grad))
         if self.init_f == True:
             self.init_f = False
             self.reminder = self.grad   # buffer
             self.accu_value = self.grad # buffer
 
         pre_dense_op = self.pre_dense_func()
-
 
         self.gradq = weight_quantization(self.grad, self.target_overflow_rate,
             self.bits, self.grad_range, stochastic=stochastic)
@@ -610,7 +551,7 @@ class Normalization_q(Layer_q):
 
 class Rescale_q(Layer_q):
     def __init__(self, name, bits, num_features, weight_decay=0, target_overflow_rate=0,
-        input_range=2, gamma_range=2, beta_range=2, grad_range=2):
+        input_range=2, gamma_range=2, beta_range=2, grad_range=1):
         '''
         Rescaling layer in BatchNorm.
 
@@ -700,9 +641,9 @@ class Rescale_q(Layer_q):
             if (np.mean(np.absolute(accu_value_np)) > eps_np):
                 self.init_flag = True
                 if (np.mean(accu_value_np) > 0):
-                    reminder_np = accu_value_np.copy() - eps_np.copy()
+                    reminder_np = accu_value_np.copy() - (accu_value_np.copy() // eps_np.copy()) * eps_np.copy()
                 else:
-                    reminder_np = accu_value_np.copy() + eps_np.copy()
+                    reminder_np = accu_value_np.copy() + ((-accu_value_np.copy()) // eps_np.copy()) * eps_np.copy()
                 self.reminder = tf.convert_to_tensor(reminder_np, dtype=tf.float32)
 
                 self.rem_flag = True
@@ -718,14 +659,13 @@ class Rescale_q(Layer_q):
 
         self.eps =  tf.cast( 1/ (2 ** (-1 - self.grad_range + self.bits)), tf.float32)    # the smallest value
         # compute the avg value
-        self.grad_avg = tf.reduce_mean(tf.abs(self.grad))
-        if self.init_f == True:
-            self.init_f = False
-            self.reminder = self.grad   # buffer
-            self.accu_value = self.grad # buffer
+        # self.grad_avg = tf.reduce_mean(tf.abs(self.grad))
+        # if self.init_f == True:
+        #     self.init_f = False
+        #     self.reminder = self.grad   # buffer
+        #     self.accu_value = self.grad # buffer
 
-        pre_rescale_op = self.pre_rescale_func()
-
+        # pre_rescale_op = self.pre_rescale_func()  # (m)
 
         self.gradq = weight_quantization(self.grad, self.target_overflow_rate,
             self.bits, self.grad_range, stochastic=stochastic)
