@@ -111,7 +111,7 @@ def main():
     parser.add_argument('--model', type=str, default='CIFAR10_Resnet20', help='Experiment model')
     parser.add_argument('--bits', type=int, default=8, help='DFXP bitwidth')
     parser.add_argument('--dropout', type=float, default=0.5, help='Dropout keep probability')
-    parser.add_argument('--weight_decay', type=float, default=0, help='Weight decay factor')
+    parser.add_argument('--weight_decay', type=float, default=0.0002, help='Weight decay factor')
     # training
     parser.add_argument('--lr', type=float, default=1e-3, help='Initial learning rate')
     parser.add_argument('--lr_decay_factor', type=float, default=0.1, help='Learning rate decay factor')

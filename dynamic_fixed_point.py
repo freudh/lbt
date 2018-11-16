@@ -92,8 +92,8 @@ def update_range(X, target_overflow_rate, bits, integer_bits):
         )
     )
     # prevent updated integer_bits being too large
-    return tf.assign(integer_bits, tf.minimum(bits - 1, integer_bits + delta))
-
+    return tf.assign(integer_bits, tf.minimum(bits-1, integer_bits + delta))
+    # return tf.assign( integer_bits, tf.clip_by_value(tf.minimum(bits-1, integer_bits + delta), 1-bits, bits-1) )
 
 class Layer_q:
     '''
@@ -129,7 +129,7 @@ class Layer_q:
 
 class Conv2d_q(Layer_q):
     def __init__(self, name, bits, ksize, strides, padding, use_bias=True, weight_decay=0,
-        target_overflow_rate=0, input_range=2, weight_range=2, bias_range=2, grad_range=1):
+        target_overflow_rate=0, input_range=2, weight_range=2, bias_range=2, grad_range=0):
         '''
         Quantized 2d convolution.
 
@@ -253,7 +253,7 @@ class Conv2d_q(Layer_q):
         global pre_conv_op
         
         self.grad = grad
-        self.eps =  tf.cast( 1/ (2 ** (-1 - self.grad_range + self.bits)), tf.float32)    # the smallest value
+        self.eps =  tf.cast( 1/ (2 ** (self.bits - self.grad_range)), tf.float32)    # the smallest value
         # compute the avg value
         # self.grad_avg = tf.reduce_mean(tf.abs(self.grad))
 
@@ -285,7 +285,7 @@ class Conv2d_q(Layer_q):
 
 class Dense_q(Layer_q):
     def __init__(self, name, bits, in_units, units, use_bias=True, weight_decay=0,
-        target_overflow_rate=0, input_range=2, weight_range=2, bias_range=2, grad_range=1):
+        target_overflow_rate=0, input_range=2, weight_range=2, bias_range=2, grad_range=0):
         '''
         Quantized fully connected layer.
 
@@ -361,17 +361,20 @@ class Dense_q(Layer_q):
 
     def pre_dense_func(self):
         out = tf.py_func(self._pre_dense_func,
-                [self.grad, self.eps, self.accu_value, self.reminder],
+                [self.grad, self.eps, self.accu_value, self.reminder, self.grad_range],
                 tf.float32
             )
 
         return out
 
-    def _pre_dense_func(self, grad_np, eps_np, accu_value_np, reminder_np):
+    def _pre_dense_func(self, grad_np, eps_np, accu_value_np, reminder_np, grad_range_np):
         dim1 = np.shape(grad_np)[0]
         dim2 = np.shape(grad_np)[1]
         for i in range(dim1):
             for j in range(dim2):
+                # if j == 0:
+                # #     print("grad[ , 0] = " + str(grad_np[i, j]))
+                #     print("grad_range " + str(grad_range_np))
                 if self.init_flag[i,j] == 1:
                     # print("------ Gotya ------")
                     if eps_np > np.absolute(grad_np)[i,j]:
@@ -407,7 +410,7 @@ class Dense_q(Layer_q):
         global pre_dense_op     
         self.grad = grad
 
-        self.eps =  tf.cast( 1/ (2 ** (-1 - self.grad_range + self.bits)), tf.float32)    # the smallest value
+        self.eps =  tf.cast( 1/ (2 ** (self.bits - self.grad_range)), tf.float32)    # the smallest value
         # # compute the avg value
         # self.grad_avg = tf.reduce_mean(tf.abs(self.grad))
         if self.init_f == True:
@@ -551,7 +554,7 @@ class Normalization_q(Layer_q):
 
 class Rescale_q(Layer_q):
     def __init__(self, name, bits, num_features, weight_decay=0, target_overflow_rate=0,
-        input_range=2, gamma_range=2, beta_range=2, grad_range=1):
+        input_range=2, gamma_range=2, beta_range=2, grad_range=0):
         '''
         Rescaling layer in BatchNorm.
 
@@ -657,7 +660,7 @@ class Rescale_q(Layer_q):
         global pre_rescale_op     
         self.grad = grad
 
-        self.eps =  tf.cast( 1/ (2 ** (-1 - self.grad_range + self.bits)), tf.float32)    # the smallest value
+        self.eps =  tf.cast( 1/ (2 ** (self.bits - self.grad_range)), tf.float32)    # the smallest value
         # compute the avg value
         # self.grad_avg = tf.reduce_mean(tf.abs(self.grad))
         # if self.init_f == True:
