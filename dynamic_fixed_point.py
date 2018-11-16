@@ -325,8 +325,8 @@ class Dense_q(Layer_q):
         self.target_overflow_rate = target_overflow_rate
         self.weight_decay = weight_decay
 
-        self.init_flag = np.ones([32, 10], dtype=int)
-        self.rem_flag = np.zeros([32, 10], dtype=int)
+        self.init_flag = np.ones([32, 10], dtype=int)   # special
+        self.rem_flag = np.zeros([32, 10], dtype=int)   # special
         
         self.init_f = True
 
@@ -367,7 +367,7 @@ class Dense_q(Layer_q):
 
         return out
 
-    def _pre_dense_func(self, grad_np, eps_np, accu_value_np, reminder_np, grad_range_np):
+    def _pre_dense_func(self, grad_np, eps_np, accu_value_np, reminder_np, grad_range_np):      
         dim1 = np.shape(grad_np)[0]
         dim2 = np.shape(grad_np)[1]
         for i in range(dim1):
@@ -393,15 +393,26 @@ class Dense_q(Layer_q):
 
                     if (np.absolute(accu_value_np)[i,j] > eps_np):
                         self.init_flag[i,j] = 1
+                        
+                        grad_np[i,j] = accu_value_np.copy()[i,j]
+                        self.grad = tf.convert_to_tensor(grad_np, dtype=tf.float32)
+
                         if (accu_value_np[i,j] > 0):
                             reminder_np[i,j] = accu_value_np.copy()[i,j] - (accu_value_np.copy()[i,j] // eps_np.copy()) * eps_np.copy()
+                            # reminder_np[i,j] = temp - (temp // eps_np.copy()) * eps_np.copy()
                         else:
                             reminder_np[i,j] = accu_value_np.copy()[i,j] + ((-accu_value_np.copy()[i,j]) // eps_np.copy()) * eps_np.copy()
+                            # reminder_np[i,j] = temp + ((-temp) // eps_np.copy()) * eps_np.copy()
                         self.reminder = tf.convert_to_tensor(reminder_np, dtype=tf.float32)
 
                         self.rem_flag[i,j] = 1
-                        grad_np[i,j] = accu_value_np.copy()[i,j]
-                        self.grad = tf.convert_to_tensor(grad_np, dtype=tf.float32)
+                        # grad_np[i,j] = accu_value_np.copy()[i,j]
+                        # self.grad = tf.convert_to_tensor(grad_np, dtype=tf.float32)
+
+                        # print("--- grad_range --- " + str(grad_range_np))
+                        # # print("grad[i,j] " + str(grad_np[i,j]))
+                        # print("abs_accu_value[i,j]" + str(np.absolute(accu_value_np)[i,j]))
+                        # print("eps_np " + str(eps_np))
 
         return grad_np
 

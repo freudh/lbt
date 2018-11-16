@@ -6,7 +6,7 @@ from random import randrange
 import dynamic_fixed_point as dfxp
 
 
-def batch_generator(X, y, shuffle=True, batch_size=64):
+def batch_generator(X, y, shuffle=True, batch_size=32):
     n = X.shape[0]
     n_batch = (n-1)//batch_size + 1
 
@@ -31,8 +31,8 @@ def preprocess_image(image, label):
 
 class Trainer:
     def __init__(self, model, dataset, logger, logdir,
-                 lr=1e-2, lr_decay_factor=0.5, lr_decay_epoch=50,
-                 momentum=0.95, n_epoch=50, batch_size=128):
+                 lr=1e-3, lr_decay_factor=0.1, lr_decay_epoch=50,
+                 momentum=0.9, n_epoch=50, batch_size=32):
 
         self.model = model
         self.model.backward()
@@ -119,11 +119,11 @@ class Trainer:
             if epoch == 0:
                 self.logger.info('New training optimizer with lr=%f' % self.lr)
                 train_op = self.get_train_op()
-            elif epoch == 70:
+            elif epoch == 75:
                 self.lr *= self.lr_decay_factor
                 self.logger.info('New training optimizer with lr=%f' % self.lr)
                 train_op = self.get_train_op()
-            elif epoch == 100:
+            elif epoch == 120:
                 self.lr *= self.lr_decay_factor
                 self.logger.info('New training optimizer with lr=%f' % self.lr)
                 train_op = self.get_train_op()                     
