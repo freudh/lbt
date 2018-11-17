@@ -16,6 +16,7 @@ from trainer import Trainer
 
 def get_exp_path():
     '''Return new experiment path.'''
+    # return '/home/jmu/cysu_lbt/tmp/log/exp-{0}'.format(
     return '/tmp/log/exp-{0}'.format(
         datetime.datetime.now().strftime('%m-%d-%H:%M:%S'))
 
@@ -118,7 +119,7 @@ def main():
     parser.add_argument('--lr_decay_epoch', type=int, default=50, help='Learning rate decay epoch')
     parser.add_argument('--momentum', type=float, default=0.9, help='SGD momentum')
     parser.add_argument('--batch_size', type=int, default=32, help='Batch size')
-    parser.add_argument('--n_epoch', type=int, default=150, help='Number of training epoch')
+    parser.add_argument('--n_epoch', type=int, default=160, help='Number of training epoch')
     parser.add_argument('--stochastic', action='store_true', help='Use stochastic quantization in backward pass')
     params = parser.parse_args()
 

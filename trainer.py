@@ -143,16 +143,18 @@ class Trainer:
                     X, y = self.sess.run(next_train_op)
                     b += 1
                     if b % 100 == 0: 
-                        _, _, loss, acc, summary, step, _ = self.sess.run([train_op, self.update_range_op,
+                        _, _, loss, acc, summary, step, _, _, _ = self.sess.run([train_op, self.update_range_op,
                             self.model.loss, self.model.accuracy, self.summary, self.global_step,
-                            dfxp.pre_dense_op
+                            dfxp.pre_dense_op,
+                            dfxp.pre_conv_op, dfxp.pre_rescale_op
                             ],
                             feed_dict={self.model.input_X: X, self.model.input_y: y})
                         self.train_writer.add_summary(summary, step)
                         self.logger.info('Batch %d loss %f acc %f' % (b, loss, acc))
                     else:
                         self.sess.run([train_op, self.update_range_op,
-                            dfxp.pre_dense_op
+                            dfxp.pre_dense_op,
+                            dfxp.pre_conv_op, dfxp.pre_rescale_op
                             ], 
                             feed_dict={self.model.input_X: X, self.model.input_y: y})
                 except tf.errors.OutOfRangeError:

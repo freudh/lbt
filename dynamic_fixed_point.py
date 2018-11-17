@@ -95,6 +95,7 @@ def update_range(X, target_overflow_rate, bits, integer_bits):
     return tf.assign(integer_bits, tf.minimum(bits-1, integer_bits + delta))
     # return tf.assign( integer_bits, tf.clip_by_value(tf.minimum(bits-1, integer_bits + delta), 1-bits, bits-1) )
 
+
 class Layer_q:
     '''
     Base class for quantized layers.
@@ -248,21 +249,20 @@ class Conv2d_q(Layer_q):
         return grad_np
 
 
-
     def backward(self, grad, stochastic):
         global pre_conv_op
         
         self.grad = grad
         self.eps =  tf.cast( 1/ (2 ** (self.bits - self.grad_range)), tf.float32)    # the smallest value
         # compute the avg value
-        # self.grad_avg = tf.reduce_mean(tf.abs(self.grad))
+        self.grad_avg = tf.reduce_mean(tf.abs(self.grad))
 
-        # if self.init_f == True:
-        #     self.init_f = False
-        #     self.reminder = self.grad   # buffer
-        #     self.accu_value = self.grad # buffer
+        if self.init_f == True:
+            self.init_f = False
+            self.reminder = self.grad   # buffer
+            self.accu_value = self.grad + 0.001 # buffer
 
-        # pre_conv_op = self.pre_conv_func()    # (m)
+        pre_conv_op = self.pre_conv_func()    # (m)
 
         self.gradq = weight_quantization(self.grad, self.target_overflow_rate,
             self.bits, self.grad_range, stochastic=stochastic)
@@ -372,14 +372,12 @@ class Dense_q(Layer_q):
         dim2 = np.shape(grad_np)[1]
         for i in range(dim1):
             for j in range(dim2):
-                # if j == 0:
-                # #     print("grad[ , 0] = " + str(grad_np[i, j]))
-                #     print("grad_range " + str(grad_range_np))
                 if self.init_flag[i,j] == 1:
                     # print("------ Gotya ------")
                     if eps_np > np.absolute(grad_np)[i,j]:
                         # print("------ Aha ------")
                         self.init_flag[i,j] = 0
+                        # print("rem_flag[i,j] " + str(self.rem_flag[i,j]))
                         if self.rem_flag[i,j] == 1:
                             accu_value_np[i,j] = reminder_np.copy()[i,j] + grad_np.copy()[i,j]
                         else:
@@ -393,26 +391,20 @@ class Dense_q(Layer_q):
 
                     if (np.absolute(accu_value_np)[i,j] > eps_np):
                         self.init_flag[i,j] = 1
-                        
-                        grad_np[i,j] = accu_value_np.copy()[i,j]
-                        self.grad = tf.convert_to_tensor(grad_np, dtype=tf.float32)
-
+                        # print("abs_accu_value_1 [i,j]" + str(np.absolute(accu_value_np)[i,j]))
                         if (accu_value_np[i,j] > 0):
                             reminder_np[i,j] = accu_value_np.copy()[i,j] - (accu_value_np.copy()[i,j] // eps_np.copy()) * eps_np.copy()
-                            # reminder_np[i,j] = temp - (temp // eps_np.copy()) * eps_np.copy()
                         else:
                             reminder_np[i,j] = accu_value_np.copy()[i,j] + ((-accu_value_np.copy()[i,j]) // eps_np.copy()) * eps_np.copy()
-                            # reminder_np[i,j] = temp + ((-temp) // eps_np.copy()) * eps_np.copy()
+
                         self.reminder = tf.convert_to_tensor(reminder_np, dtype=tf.float32)
-
+                        # print("abs_accu_value_2 [i,j]" + str(np.absolute(accu_value_np)[i,j]))
                         self.rem_flag[i,j] = 1
-                        # grad_np[i,j] = accu_value_np.copy()[i,j]
-                        # self.grad = tf.convert_to_tensor(grad_np, dtype=tf.float32)
-
-                        # print("--- grad_range --- " + str(grad_range_np))
-                        # # print("grad[i,j] " + str(grad_np[i,j]))
-                        # print("abs_accu_value[i,j]" + str(np.absolute(accu_value_np)[i,j]))
+                        grad_np[i,j] = accu_value_np.copy()[i,j]
+                        self.grad = tf.convert_to_tensor(grad_np, dtype=tf.float32)
+                        # self.grad = tf.print(self.grad)
                         # print("eps_np " + str(eps_np))
+                        # print("reminder_np[i,j] " + str(reminder_np[i,j]))
 
         return grad_np
 
@@ -426,8 +418,10 @@ class Dense_q(Layer_q):
         # self.grad_avg = tf.reduce_mean(tf.abs(self.grad))
         if self.init_f == True:
             self.init_f = False
-            self.reminder = self.grad   # buffer
-            self.accu_value = self.grad # buffer
+            self.reminder = self.grad # buffer
+            self.accu_value =  self.grad + 0.001 # buffer            
+            # self.reminder = tf.constant(0.0, shape=[32,10], dtype=tf.float32) # buffer
+            # self.accu_value =  tf.constant(0.001, shape=[32,10], dtype=tf.float32) # buffer
 
         pre_dense_op = self.pre_dense_func()
 
@@ -673,16 +667,16 @@ class Rescale_q(Layer_q):
 
         self.eps =  tf.cast( 1/ (2 ** (self.bits - self.grad_range)), tf.float32)    # the smallest value
         # compute the avg value
-        # self.grad_avg = tf.reduce_mean(tf.abs(self.grad))
-        # if self.init_f == True:
-        #     self.init_f = False
-        #     self.reminder = self.grad   # buffer
-        #     self.accu_value = self.grad # buffer
+        self.grad_avg = tf.reduce_mean(tf.abs(self.grad))
+        if self.init_f == True:
+            self.init_f = False
+            self.reminder = self.grad   # buffer
+            self.accu_value = self.grad + 0.001 # buffer
 
-        # pre_rescale_op = self.pre_rescale_func()  # (m)
+        pre_rescale_op = self.pre_rescale_func()  # (m)
 
         self.gradq = weight_quantization(self.grad, self.target_overflow_rate,
-            self.bits, self.grad_range, stochastic=stochastic)
+                                         self.bits, self.grad_range, stochastic=stochastic)
         self.dgamma = tf.gradients(self.y, self.gamma, self.gradq)[0] + 2 * self.weight_decay * self.gamma
         self.dbeta = tf.gradients(self.y, self.beta, self.gradq)[0]
         return tf.gradients(self.y, self.X, self.gradq)[0]
