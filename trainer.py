@@ -83,7 +83,7 @@ class Trainer:
             self.sess.run(tf.global_variables_initializer())
         else:
             self.new_saver = tf.train.import_meta_graph('/home/jiandong/cysu_lbt/tmp/ckpt/model.ckpt.meta')
-            self.new_saver.restore(self.sess, tf.train.latest_checkpoint('/home/jiandong/cysu_lbt/tmp/ckpt'))
+            self.new_saver.restore(self.sess, tf.train.latest_checkpoint('/home/jiandong/cysu_lbt/tmp/ckpt', latest_filename='checkpoint'))
 
     def get_train_op(self):
         # This reset the optimizer variables after lr/momentum changes
@@ -192,7 +192,7 @@ class Trainer:
             test_loss /= batch_cnt
             self.logger.info('Epoch %d test accuracy %f' % (epoch+1, test_acc))
             # checkpoint: save_model
-            self.save_model_per('/home/jiandong/cysu_lbt/tmp/ckpt/')
+            self.save_model_per('/home/jiandong/cysu_lbt/tmp/ckpt')
 
     def save_model_per(self, exp_path):
         # saver = tf.train.Saver(max_to_keep=3, keep_checkpoint_every_n_hours=0.5)

@@ -1,7 +1,7 @@
 import numpy as np
 from tensorflow.keras.datasets import mnist, cifar10
 
-
+import tensorflow as tf
 import argparse
 import datetime
 import logging
@@ -99,9 +99,10 @@ def get_model_and_dataset(params):
         Model, dataset = models.CIFAR10_Resnet56, 'CIFAR10'
     else:
         assert False, 'Invalid value for `model`: %s' % params.model
+     
+    myModel=Model(params.bits, params.dropout, params.weight_decay, params.stochastic), load_data(dataset)
 
-    return Model(params.bits, params.dropout, params.weight_decay, params.stochastic), load_data(dataset)
-
+    return myModel 
 
 def main():
     parser = argparse.ArgumentParser(description='DFXP')
@@ -137,7 +138,8 @@ def main():
         for k, v in sorted(dict(vars(params)).items())))
 
     # get model and dataset
-    model, dataset = get_model_and_dataset(params)
+    with tf.variable_scope("foo", reuse=tf.AUTO_REUSE) as vs:
+        model, dataset = get_model_and_dataset(params)
 
     # build trainer
     trainer = Trainer(
