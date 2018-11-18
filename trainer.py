@@ -82,6 +82,7 @@ class Trainer:
             self.logger.info('Initializing model')
             self.sess.run(tf.global_variables_initializer())
         else:
+            self.sess.run(tf.global_variables_initializer())
             self.new_saver = tf.train.import_meta_graph('/home/jiandong/cysu_lbt/tmp/ckpt/model.ckpt.meta')
             self.new_saver.restore(self.sess, tf.train.latest_checkpoint('/home/jiandong/cysu_lbt/tmp/ckpt', latest_filename='checkpoint'))
 
