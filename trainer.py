@@ -75,9 +75,15 @@ class Trainer:
         self.train_writer = tf.summary.FileWriter(logdir+'/train', self.sess.graph)
         self.test_writer = tf.summary.FileWriter(logdir+'/test', self.sess.graph)
 
+        self.m_continue = m_continue
+
     def init_model(self):
-        self.logger.info('Initializing model')
-        self.sess.run(tf.global_variables_initializer())
+        if self.m_continue == False:
+            self.logger.info('Initializing model')
+            self.sess.run(tf.global_variables_initializer())
+        else:
+            self.new_saver = tf.train.import_meta_graph('/home/jiandong/cysu_lbt/tmp/ckpt/model.ckpt.meta')
+            self.new_saver.restore(self.sess, tf.train.latest_checkpoint('/home/jiandong/cysu_lbt/tmp/ckpt'))
 
     def get_train_op(self):
         # This reset the optimizer variables after lr/momentum changes
