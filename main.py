@@ -138,7 +138,7 @@ def main():
         for k, v in sorted(dict(vars(params)).items())))
 
     # get model and dataset
-    with tf.variable_scope("foo", reuse=tf.AUTO_REUSE):
+    with tf.variable_scope("foo", reuse=tf.AUTO_REUSE) as vs:
         model, dataset = get_model_and_dataset(params)
 
     # build trainer
