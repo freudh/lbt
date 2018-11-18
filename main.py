@@ -121,6 +121,7 @@ def main():
     parser.add_argument('--batch_size', type=int, default=32, help='Batch size')
     parser.add_argument('--n_epoch', type=int, default=160, help='Number of training epoch')
     parser.add_argument('--stochastic', action='store_true', help='Use stochastic quantization in backward pass')
+    parser.add_argument('--m_continue', type=bool, default=False, help='Continue from ckpt or not')
     params = parser.parse_args()
 
     # experiment path
@@ -150,6 +151,7 @@ def main():
         momentum=params.momentum,
         n_epoch=params.n_epoch,
         batch_size=params.batch_size,
+        m_continue=params.m_continue,
     )
 
     # training

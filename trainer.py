@@ -32,7 +32,7 @@ def preprocess_image(image, label):
 class Trainer:
     def __init__(self, model, dataset, logger, logdir,
                  lr=1e-3, lr_decay_factor=0.1, lr_decay_epoch=50,
-                 momentum=0.9, n_epoch=50, batch_size=32):
+                 momentum=0.9, n_epoch=50, batch_size=32, m_continue=False):
 
         self.model = model
         self.model.backward()
@@ -53,7 +53,9 @@ class Trainer:
         self.logger.info('momentum %f' % momentum)
         self.logger.info('training epoch %d' % n_epoch)
         self.logger.info('batch_size %d' % batch_size)
+        self.logger.info('m_continue %r' % m_continue)        
         self.logger.info('logdir %s' % logdir)
+
 
         self.global_step = tf.train.get_or_create_global_step()
         self.lr = lr
@@ -183,6 +185,13 @@ class Trainer:
             test_acc /= batch_cnt
             test_loss /= batch_cnt
             self.logger.info('Epoch %d test accuracy %f' % (epoch+1, test_acc))
+            # checkpoint: save_model
+            self.save_model_per('/home/jiandong/cysu_lbt/tmp/ckpt/')
+
+    def save_model_per(self, exp_path):
+        # saver = tf.train.Saver(max_to_keep=3, keep_checkpoint_every_n_hours=0.5)
+        saver = tf.train.Saver(max_to_keep=3)
+        saver.save(self.sess, exp_path+'/model.ckpt')
 
     def save_model(self, exp_path):
         self.logger.info('Saving model')
