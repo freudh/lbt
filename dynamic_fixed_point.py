@@ -157,7 +157,7 @@ class Conv2d_q(Layer_q):
         self.name = name
         self.use_bias = use_bias
 
-        with tf.variable_scope(self.name):
+        with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
             self.W = tf.Variable(tf.random_uniform(ksize, -limit, limit))
 
             self.W_range = tf.get_variable('W_range', dtype=tf.int32,
@@ -183,7 +183,7 @@ class Conv2d_q(Layer_q):
     def forward(self, X):
         self.X = X
 
-        with tf.name_scope(self.name):
+        with tf.name_scope(self.name, reuse=tf.AUTO_REUSE):
             tf.summary.scalar('W_range', self.W_range)
             tf.summary.scalar('X_range', self.X_range)
             tf.summary.scalar('grad_range', self.grad_range)
@@ -306,7 +306,7 @@ class Dense_q(Layer_q):
         self.name = name
         self.use_bias = use_bias
 
-        with tf.variable_scope(self.name):
+        with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
             self.W = tf.Variable(tf.random_uniform([in_units, units], -limit, limit))
 
             self.W_range = tf.get_variable('W_range', dtype=tf.int32,
@@ -333,7 +333,7 @@ class Dense_q(Layer_q):
     def forward(self, X):
         self.X = X
 
-        with tf.name_scope(self.name):
+        with tf.name_scope(self.name, reuse=tf.AUTO_REUSE):
             tf.summary.scalar('W_range', self.W_range)
             tf.summary.scalar('X_range', self.X_range)
             tf.summary.scalar('grad_range', self.grad_range)
@@ -490,7 +490,7 @@ class Normalization_q(Layer_q):
         self.name = name
         self.train = training
 
-        with tf.variable_scope(self.name):
+        with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
             self.X_range = tf.get_variable('X_range', dtype=tf.int32,
                 initializer=input_range, trainable=False)
             self.grad_range = tf.get_variable('grad_range', dtype=tf.int32,
@@ -509,7 +509,7 @@ class Normalization_q(Layer_q):
     def forward(self, X):
         self.X = X
 
-        with tf.name_scope(self.name):
+        with tf.name_scope(self.name, reuse=tf.AUTO_REUSE):
             tf.summary.scalar('X_range', self.X_range)
             tf.summary.scalar('grad_range', self.grad_range)
 
@@ -576,7 +576,7 @@ class Rescale_q(Layer_q):
         '''
         self.name = name
 
-        with tf.variable_scope(self.name):
+        with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
             self.gamma = tf.get_variable('g', num_features,
                 initializer=tf.ones_initializer())
             self.beta = tf.get_variable('b', num_features,
@@ -602,7 +602,7 @@ class Rescale_q(Layer_q):
     def forward(self, X):
         self.X = X
 
-        with tf.name_scope(self.name):
+        with tf.name_scope(self.name, reuse=tf.AUTO_REUSE):
             tf.summary.scalar('g_range', self.g_range)
             tf.summary.scalar('b_range', self.b_range)
             tf.summary.scalar('X_range', self.X_range)
