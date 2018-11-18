@@ -105,64 +105,64 @@ def get_model_and_dataset(params):
     return myModel 
 
 def main():
-    parser = argparse.ArgumentParser(description='DFXP')
-    # experiment path
-    parser.add_argument('--exp_path', type=str, default=None,
-                        help='Experiment path')
-    # model architecture
-    parser.add_argument('--model', type=str, default='CIFAR10_Resnet20', help='Experiment model')
-    parser.add_argument('--bits', type=int, default=8, help='DFXP bitwidth')
-    parser.add_argument('--dropout', type=float, default=0.5, help='Dropout keep probability')
-    parser.add_argument('--weight_decay', type=float, default=0.0002, help='Weight decay factor')
-    # training
-    parser.add_argument('--lr', type=float, default=1e-3, help='Initial learning rate')
-    parser.add_argument('--lr_decay_factor', type=float, default=0.1, help='Learning rate decay factor')
-    parser.add_argument('--lr_decay_epoch', type=int, default=50, help='Learning rate decay epoch')
-    parser.add_argument('--momentum', type=float, default=0.9, help='SGD momentum')
-    parser.add_argument('--batch_size', type=int, default=32, help='Batch size')
-    parser.add_argument('--n_epoch', type=int, default=160, help='Number of training epoch')
-    parser.add_argument('--stochastic', action='store_true', help='Use stochastic quantization in backward pass')
-    parser.add_argument('--m_continue', type=bool, default=False, help='Continue from ckpt or not')
-    params = parser.parse_args()
+    with tf.variable_scope("foo", reuse=tf.AUTO_REUSE):    
+        parser = argparse.ArgumentParser(description='DFXP')
+        # experiment path
+        parser.add_argument('--exp_path', type=str, default=None,
+                            help='Experiment path')
+        # model architecture
+        parser.add_argument('--model', type=str, default='CIFAR10_Resnet20', help='Experiment model')
+        parser.add_argument('--bits', type=int, default=8, help='DFXP bitwidth')
+        parser.add_argument('--dropout', type=float, default=0.5, help='Dropout keep probability')
+        parser.add_argument('--weight_decay', type=float, default=0.0002, help='Weight decay factor')
+        # training
+        parser.add_argument('--lr', type=float, default=1e-3, help='Initial learning rate')
+        parser.add_argument('--lr_decay_factor', type=float, default=0.1, help='Learning rate decay factor')
+        parser.add_argument('--lr_decay_epoch', type=int, default=50, help='Learning rate decay epoch')
+        parser.add_argument('--momentum', type=float, default=0.9, help='SGD momentum')
+        parser.add_argument('--batch_size', type=int, default=32, help='Batch size')
+        parser.add_argument('--n_epoch', type=int, default=160, help='Number of training epoch')
+        parser.add_argument('--stochastic', action='store_true', help='Use stochastic quantization in backward pass')
+        parser.add_argument('--m_continue', type=bool, default=False, help='Continue from ckpt or not')
+        params = parser.parse_args()
 
-    # experiment path
-    if params.exp_path is None:
-        params.exp_path = get_exp_path()
-    pathlib.Path(params.exp_path).mkdir(parents=True, exist_ok=False)
+        # experiment path
+        if params.exp_path is None:
+            params.exp_path = get_exp_path()
+        pathlib.Path(params.exp_path).mkdir(parents=True, exist_ok=False)
 
-    # logger
-    logger = get_logger(params.exp_path + '/experiment.log')
-    logger.info('Start of experiment')
-    logger.info('============ Initialized logger ============')
-    logger.info('\n\t' + '\n\t'.join('%s: %s' % (k, str(v))
-        for k, v in sorted(dict(vars(params)).items())))
+        # logger
+        logger = get_logger(params.exp_path + '/experiment.log')
+        logger.info('Start of experiment')
+        logger.info('============ Initialized logger ============')
+        logger.info('\n\t' + '\n\t'.join('%s: %s' % (k, str(v))
+            for k, v in sorted(dict(vars(params)).items())))
 
-    # get model and dataset
-    with tf.variable_scope("foo", reuse=tf.AUTO_REUSE):
+        # get model and dataset
         model, dataset = get_model_and_dataset(params)
 
-    # build trainer
-    trainer = Trainer(
-        model=model,
-        dataset=dataset,
-        logger=logger,
-        logdir=params.exp_path,
-        lr=params.lr,
-        lr_decay_factor=params.lr_decay_factor,
-        lr_decay_epoch=params.lr_decay_epoch,
-        momentum=params.momentum,
-        n_epoch=params.n_epoch,
-        batch_size=params.batch_size,
-        m_continue=params.m_continue,
-    )
+        # build trainer
+        trainer = Trainer(
+            model=model,
+            dataset=dataset,
+            logger=logger,
+            logdir=params.exp_path,
+            lr=params.lr,
+            lr_decay_factor=params.lr_decay_factor,
+            lr_decay_epoch=params.lr_decay_epoch,
+            momentum=params.momentum,
+            n_epoch=params.n_epoch,
+            batch_size=params.batch_size,
+            m_continue=params.m_continue,
+        )
 
-    # training
-    trainer.init_model()
-    trainer.train()
-    trainer.save_model(params.exp_path)
+        # training
+        trainer.init_model()
+        trainer.train()
+        trainer.save_model(params.exp_path)
 
-    # end
-    logger.info('End of experiment')
+        # end
+        logger.info('End of experiment')
 
 
 if __name__ == '__main__':
