@@ -127,7 +127,6 @@ class Layer_q:
         '''
         return 'quantized layer (default identity)'
 
-mat_idx = 0
 
 class Conv2d_q(Layer_q):
     def __init__(self, name, bits, ksize, strides, padding, use_bias=True, weight_decay=0,
@@ -149,7 +148,6 @@ class Conv2d_q(Layer_q):
             bias_range: initial DFXP range for bias
             grad_range: initial DFXP range for backward gradients
         '''
-        global mat_idx
         h, w, Cin, Cout = self.ksize = ksize
         self.strides = strides
         self.padding = padding
@@ -178,23 +176,9 @@ class Conv2d_q(Layer_q):
         self.target_overflow_rate = target_overflow_rate
         self.weight_decay = weight_decay
 
-        # matrix shape for grad of loss func. over output
-        self.mat_shape_b = [  [32,8,8,64], [32,8,8,64], [32,8,8,64], [32,8,8,64], [32,8,8,64], [32,8,8,64], [32,8,8,64],
-                            [32,16,16,32], [32,16,16,32], [32,16,16,32], [32,16,16,32], [32,16,16,32], [32,16,16,32], [32,16,16,32],
-                            [32,32,32,16], [32,32,32,16], [32,32,32,16], [32,32,32,16], [32,32,32,16], [32,32,32,16], [32,32,32,16]
-        ]
-        self.mat_shape_f = [  [32,32,32,16], [32,32,32,16], [32,32,32,16], [32,32,32,16], [32,32,32,16], [32,32,32,16], [32,32,32,16],
-                            [32,16,16,32], [32,16,16,32], [32,16,16,32], [32,16,16,32], [32,16,16,32], [32,16,16,32], [32,16,16,32],
-                            [32,8,8,64], [32,8,8,64], [32,8,8,64], [32,8,8,64], [32,8,8,64], [32,8,8,64], [32,8,8,64]
-        ]
-
-        self.init_flag = np.ones(self.mat_shape_f[mat_idx], dtype=int)
-        self.rem_flag = np.zeros(self.mat_shape_f[mat_idx], dtype=int)
-        # self.init_flag = True
-        # self.rem_flag = False
-        
+        self.init_flag = True
+        self.rem_flag = False
         self.init_f = True
-
 
     def forward(self, X):
         self.X = X
@@ -227,69 +211,54 @@ class Conv2d_q(Layer_q):
 
     def pre_conv_func(self):
         out = tf.py_func(self._pre_conv_func,
-                [self.grad, self.eps, self.accu_value, self.reminder],
+                [self.grad_avg, self.grad, self.eps, self.accu_value, self.reminder],
                 tf.float32
             )
 
         return out
 
-    def _pre_conv_func(self, grad_np, eps_np, accu_value_np, reminder_np):
-        global mat_idx
-        dim1 = self.mat_shape_f[mat_idx][0]
-        dim2 = self.mat_shape_f[mat_idx][1]
-        dim3 = self.mat_shape_f[mat_idx][2]
-        dim4 = self.mat_shape_f[mat_idx][3]
+    def _pre_conv_func(self, grad_avg_np, grad_np, eps_np, accu_value_np, reminder_np):
+        if self.init_flag == True:
+            # print("------ Gotya ------")
+            if eps_np > grad_avg_np:
+                # print("------ Aha ------")
+                self.init_flag = False
+                if self.rem_flag == True:
+                    accu_value_np = reminder_np.copy() + grad_np.copy()
+                else:
+                    accu_value_np = grad_np.copy()
+                self.accu_value = tf.convert_to_tensor(accu_value_np, dtype=tf.float32)
+        
+        else:
+            # print("--- Small value collected ---")
+            accu_value_np += grad_np.copy()
+            self.accu_value = tf.convert_to_tensor(accu_value_np, dtype=tf.float32)
 
-        for i in range(dim1):
-            for j in range(dim2):
-                for m in range(dim3):
-                    for n in range(dim4):
+            if (np.mean(np.absolute(accu_value_np)) > eps_np):
+                self.init_flag = True
+                if (np.mean(accu_value_np) > 0):
+                    reminder_np = accu_value_np.copy() - (accu_value_np.copy() // eps_np.copy()) * eps_np.copy()
+                else:
+                    reminder_np = accu_value_np.copy() + ((-accu_value_np.copy()) // eps_np.copy()) * eps_np.copy()
+                self.reminder = tf.convert_to_tensor(reminder_np, dtype=tf.float32)
 
-                        if self.init_flag[i,j,m,n] == 1:
-                            # print("------ Gotya ------")
-                            if eps_np > np.absolute(grad_np)[i,j,m,n]:
-                                # print("------ Aha ------")
-                                self.init_flag[i,j,m,n] = 0
-                                if self.rem_flag[i,j,m,n] == 1:
-                                    accu_value_np[i,j,m,n] = reminder_np.copy()[i,j,m,n] + grad_np.copy()[i,j,m,n]
-                                else:
-                                    accu_value_np[i,j,m,n] = grad_np.copy()[i,j,m,n]
-                                self.accu_value = tf.convert_to_tensor(accu_value_np, dtype=tf.float32)
-                        
-                        else:
-                            # print("--- Small value collected ---")
-                            accu_value_np[i,j,m,n] += grad_np.copy()[i,j,m,n]
-                            self.accu_value = tf.convert_to_tensor(accu_value_np, dtype=tf.float32)
+                self.rem_flag = True
+                grad_np = accu_value_np.copy()
+                self.grad = tf.convert_to_tensor(grad_np, dtype=tf.float32)
 
-                            if (np.absolute(accu_value_np)[i,j,m,n] > eps_np):
-                                self.init_flag[i,j,m,n] = 1
-                                if (accu_value_np[i,j,m,n] > 0):
-                                    reminder_np[i,j,m,n] = accu_value_np.copy()[i,j,m,n] - (accu_value_np.copy()[i,j,m,n] // eps_np.copy()) * eps_np.copy()
-                                else:
-                                    reminder_np[i,j,m,n] = accu_value_np.copy()[i,j,m,n] + ((-accu_value_np.copy())[i,j,m,n] // eps_np.copy()) * eps_np.copy()
-                                self.reminder = tf.convert_to_tensor(reminder_np, dtype=tf.float32)
-
-                                self.rem_flag[i,j,m,n] = 1
-                                grad_np[i,j,m,n] = accu_value_np.copy()[i,j,m,n]
-                                self.grad = tf.convert_to_tensor(grad_np, dtype=tf.float32)
-
-        mat_idx += 1
-        mat_idx %= 21
         return grad_np
 
 
     def backward(self, grad, stochastic):
         global pre_conv_op
-
+        
         self.grad = grad
         self.eps =  tf.cast( 1/ (2 ** (self.bits - self.grad_range)), tf.float32)    # the smallest value
         # compute the avg value
-        # self.grad_avg = tf.reduce_mean(tf.abs(self.grad))
+        self.grad_avg = tf.reduce_mean(tf.abs(self.grad))
 
         if self.init_f == True:
             self.init_f = False
-            # self.reminder = tf.constant(0.0, shape=self.ksize, dtype=tf.float32) # buffer
-            # self.accu_value =  tf.constant(0.001, shape=self.ksize, dtype=tf.float32) # buffer            
             self.reminder = self.grad   # buffer
             self.accu_value = self.grad + 0.001 # buffer
 
@@ -334,8 +303,6 @@ class Dense_q(Layer_q):
             grad_range: initial DFXP range for backward gradients
         '''
         limit = (6 / (in_units + units)) ** 0.5
-        self.in_units = in_units
-        self.units = units
         self.name = name
         self.use_bias = use_bias
 
@@ -358,10 +325,8 @@ class Dense_q(Layer_q):
         self.target_overflow_rate = target_overflow_rate
         self.weight_decay = weight_decay
 
-        self.init_flag = np.ones([in_units, units], dtype=int)
-        self.rem_flag = np.zeros([in_units, units], dtype=int)
-        # self.init_flag = np.ones([32, 10], dtype=int)   # special
-        # self.rem_flag = np.zeros([32, 10], dtype=int)   # special
+        self.init_flag = np.ones([32, 10], dtype=int)   # special
+        self.rem_flag = np.zeros([32, 10], dtype=int)   # special
         
         self.init_f = True
 
@@ -437,6 +402,7 @@ class Dense_q(Layer_q):
                         self.rem_flag[i,j] = 1
                         grad_np[i,j] = accu_value_np.copy()[i,j]
                         self.grad = tf.convert_to_tensor(grad_np, dtype=tf.float32)
+                        # self.grad = tf.print(self.grad)
                         # print("eps_np " + str(eps_np))
                         # print("reminder_np[i,j] " + str(reminder_np[i,j]))
 
@@ -452,10 +418,10 @@ class Dense_q(Layer_q):
         # self.grad_avg = tf.reduce_mean(tf.abs(self.grad))
         if self.init_f == True:
             self.init_f = False
-            # self.reminder = self.grad # buffer
-            # self.accu_value =  self.grad + 0.001 # buffer            
-            self.reminder = tf.constant(0.0, shape=[self.in_units, self.units], dtype=tf.float32) # buffer
-            self.accu_value =  tf.constant(0.001, shape=[self.in_units, self.units], dtype=tf.float32) # buffer
+            self.reminder = self.grad # buffer
+            self.accu_value =  self.grad + 0.001 # buffer            
+            # self.reminder = tf.constant(0.0, shape=[32,10], dtype=tf.float32) # buffer
+            # self.accu_value =  tf.constant(0.001, shape=[32,10], dtype=tf.float32) # buffer
 
         pre_dense_op = self.pre_dense_func()
 
@@ -904,7 +870,7 @@ class ResidualBottleneck_q(ResidualBlock_q):
     expansion = 4
 
     def __init__(self, name, bits, in_channels, channels, stride, training, batch_norm=True, weight_decay=0,
-        target_overflow_rate=0, input_range=2, weight_range=2, bias_range=2, grad_range=0):
+        target_overflow_rate=0, input_range=2, weight_range=2, bias_range=2, grad_range=2):
         '''
         Quantized residual bottleneck.
 
