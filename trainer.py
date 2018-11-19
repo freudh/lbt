@@ -96,23 +96,24 @@ class Trainer:
     def get_dataset_iterators(self, dataset):
         (X_train, y_train), (X_test, y_test) = dataset
 
-        with tf.device('/cpu:0'):
-            self.X_train_placeholder = tf.placeholder(tf.float32, X_train.shape)
-            self.X_test_placeholder = tf.placeholder(tf.float32, X_test.shape)
-            self.y_train_placeholder = tf.placeholder(tf.int32, y_train.shape)
-            self.y_test_placeholder = tf.placeholder(tf.int32, y_test.shape)
+        with tf.variable_scope("input_", reuse=tf.AUTO_REUSE): 
+            with tf.device('/cpu:0'):
+                self.X_train_placeholder = tf.placeholder(tf.float32, X_train.shape, name='X_train_plc')
+                self.X_test_placeholder = tf.placeholder(tf.float32, X_test.shape, name='X_test_plc')
+                self.y_train_placeholder = tf.placeholder(tf.int32, y_train.shape, name='y_train_plc')
+                self.y_test_placeholder = tf.placeholder(tf.int32, y_test.shape, name='y_test_plc')
 
-            train_dataset = tf.data.Dataset.from_tensor_slices((self.X_train_placeholder, self.y_train_placeholder))
-            train_dataset = (train_dataset.shuffle(buffer_size=X_train.shape[0])
-                            .map(preprocess_image, num_parallel_calls=4)
-                            .batch(self.batch_size)
-                            .prefetch(1)
-                            )
-            train_iterator = train_dataset.make_initializable_iterator()
+                train_dataset = tf.data.Dataset.from_tensor_slices((self.X_train_placeholder, self.y_train_placeholder))
+                train_dataset = (train_dataset.shuffle(buffer_size=X_train.shape[0])
+                                .map(preprocess_image, num_parallel_calls=4)
+                                .batch(self.batch_size)
+                                .prefetch(1)
+                                )
+                train_iterator = train_dataset.make_initializable_iterator()
 
-            test_dataset = tf.data.Dataset.from_tensor_slices(
-                (self.X_test_placeholder, self.y_test_placeholder)).batch(1000)
-            test_iterator = test_dataset.make_initializable_iterator()
+                test_dataset = tf.data.Dataset.from_tensor_slices(
+                    (self.X_test_placeholder, self.y_test_placeholder)).batch(1000)
+                test_iterator = test_dataset.make_initializable_iterator()
 
         return train_iterator, test_iterator
 
