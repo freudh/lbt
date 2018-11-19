@@ -158,7 +158,8 @@ class Conv2d_q(Layer_q):
         self.use_bias = use_bias
 
         with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
-            self.W = tf.Variable(tf.random_uniform(ksize, -limit, limit))
+            # self.W = tf.Variable(tf.random_uniform(ksize, -limit, limit))
+            self.W = tf.get_variable('W', initializer=tf.random_uniform(ksize, -limit, limit))
 
             self.W_range = tf.get_variable('W_range', dtype=tf.int32,
                 initializer=weight_range, trainable=False)
@@ -307,7 +308,8 @@ class Dense_q(Layer_q):
         self.use_bias = use_bias
 
         with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
-            self.W = tf.Variable(tf.random_uniform([in_units, units], -limit, limit))
+            # self.W = tf.Variable(tf.random_uniform([in_units, units], -limit, limit))
+            self.W = tf.get_variable('W', initializer=tf.random_uniform([in_units, units], -limit, limit))
 
             self.W_range = tf.get_variable('W_range', dtype=tf.int32,
                 initializer=weight_range, trainable=False)
