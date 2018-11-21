@@ -1,5 +1,6 @@
 import tensorflow as tf
 import numpy as np
+import math
 
 
 def weight_quantization(X, target_overflow_rate, bits, integer_bits, stochastic=False):
@@ -157,9 +158,8 @@ class Conv2d_q(Layer_q):
         self.name = name
         self.use_bias = use_bias
 
-        with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
-            # self.W = tf.Variable(tf.random_uniform(ksize, -limit, limit))
-            self.W = tf.get_variable('W', initializer=tf.random_uniform(ksize, -limit, limit))
+        with tf.variable_scope(self.name):
+            self.W = tf.Variable(tf.random_uniform(ksize, -limit, limit))
 
             self.W_range = tf.get_variable('W_range', dtype=tf.int32,
                 initializer=weight_range, trainable=False)
@@ -177,9 +177,11 @@ class Conv2d_q(Layer_q):
         self.target_overflow_rate = target_overflow_rate
         self.weight_decay = weight_decay
 
-        self.init_flag = True
-        self.rem_flag = False
-        self.init_f = True
+        # matrix shape for grad of loss func. over output
+        # self.mat_shape = [  [32,32,32,16], [32,32,32,16], [32,32,32,16], [32,32,32,16], [32,32,32,16], [32,32,32,16], [32,32,32,16],
+        #                     [32,16,16,32], [32,16,16,32], [32,16,16,32], [32,16,16,32], [32,16,16,32], [32,16,16,32], [32,16,16,32],
+        #                     [32,8,8,64], [32,8,8,64], [32,8,8,64], [32,8,8,64], [32,8,8,64], [32,8,8,64], [32,8,8,64]
+        # ]
 
     def forward(self, X):
         self.X = X
@@ -210,60 +212,8 @@ class Conv2d_q(Layer_q):
         return self.y
 
 
-    def pre_conv_func(self):
-        out = tf.py_func(self._pre_conv_func,
-                [self.grad_avg, self.grad, self.eps, self.accu_value, self.reminder],
-                tf.float32
-            )
-
-        return out
-
-    def _pre_conv_func(self, grad_avg_np, grad_np, eps_np, accu_value_np, reminder_np):
-        if self.init_flag == True:
-            # print("------ Gotya ------")
-            if eps_np > grad_avg_np:
-                # print("------ Aha ------")
-                self.init_flag = False
-                if self.rem_flag == True:
-                    accu_value_np = reminder_np.copy() + grad_np.copy()
-                else:
-                    accu_value_np = grad_np.copy()
-                self.accu_value = tf.convert_to_tensor(accu_value_np, dtype=tf.float32)
-        
-        else:
-            # print("--- Small value collected ---")
-            accu_value_np += grad_np.copy()
-            self.accu_value = tf.convert_to_tensor(accu_value_np, dtype=tf.float32)
-
-            if (np.mean(np.absolute(accu_value_np)) > eps_np):
-                self.init_flag = True
-                if (np.mean(accu_value_np) > 0):
-                    reminder_np = accu_value_np.copy() - (accu_value_np.copy() // eps_np.copy()) * eps_np.copy()
-                else:
-                    reminder_np = accu_value_np.copy() + ((-accu_value_np.copy()) // eps_np.copy()) * eps_np.copy()
-                self.reminder = tf.convert_to_tensor(reminder_np, dtype=tf.float32)
-
-                self.rem_flag = True
-                grad_np = accu_value_np.copy()
-                self.grad = tf.convert_to_tensor(grad_np, dtype=tf.float32)
-
-        return grad_np
-
-
     def backward(self, grad, stochastic):
-        global pre_conv_op
-        
         self.grad = grad
-        self.eps =  tf.cast( 1/ (2 ** (self.bits - self.grad_range)), tf.float32)    # the smallest value
-        # compute the avg value
-        self.grad_avg = tf.reduce_mean(tf.abs(self.grad))
-
-        if self.init_f == True:
-            self.init_f = False
-            self.reminder = self.grad   # buffer
-            self.accu_value = self.grad + 0.001 # buffer
-
-        pre_conv_op = self.pre_conv_func()    # (m)
 
         self.gradq = weight_quantization(self.grad, self.target_overflow_rate,
             self.bits, self.grad_range, stochastic=stochastic)
@@ -304,12 +254,13 @@ class Dense_q(Layer_q):
             grad_range: initial DFXP range for backward gradients
         '''
         limit = (6 / (in_units + units)) ** 0.5
+        self.in_units = in_units
+        self.units = units
         self.name = name
         self.use_bias = use_bias
 
-        with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
-            # self.W = tf.Variable(tf.random_uniform([in_units, units], -limit, limit))
-            self.W = tf.get_variable('W', initializer=tf.random_uniform([in_units, units], -limit, limit))
+        with tf.variable_scope(self.name):
+            self.W = tf.Variable(tf.random_uniform([in_units, units], -limit, limit))
 
             self.W_range = tf.get_variable('W_range', dtype=tf.int32,
                 initializer=weight_range, trainable=False)
@@ -327,8 +278,10 @@ class Dense_q(Layer_q):
         self.target_overflow_rate = target_overflow_rate
         self.weight_decay = weight_decay
 
-        self.init_flag = np.ones([32, 10], dtype=int)   # special
-        self.rem_flag = np.zeros([32, 10], dtype=int)   # special
+        self.init_flag = np.ones([in_units, units], dtype=int)
+        self.rem_flag = np.zeros([in_units, units], dtype=int)
+        # self.init_flag = np.ones([32, 10], dtype=int)   # special
+        # self.rem_flag = np.zeros([32, 10], dtype=int)   # special
         
         self.init_f = True
 
@@ -393,21 +346,18 @@ class Dense_q(Layer_q):
 
                     if (np.absolute(accu_value_np)[i,j] > eps_np):
                         self.init_flag[i,j] = 1
-                        # print("abs_accu_value_1 [i,j]" + str(np.absolute(accu_value_np)[i,j]))
+
                         if (accu_value_np[i,j] > 0):
                             reminder_np[i,j] = accu_value_np.copy()[i,j] - (accu_value_np.copy()[i,j] // eps_np.copy()) * eps_np.copy()
                         else:
                             reminder_np[i,j] = accu_value_np.copy()[i,j] + ((-accu_value_np.copy()[i,j]) // eps_np.copy()) * eps_np.copy()
 
                         self.reminder = tf.convert_to_tensor(reminder_np, dtype=tf.float32)
-                        # print("abs_accu_value_2 [i,j]" + str(np.absolute(accu_value_np)[i,j]))
+
                         self.rem_flag[i,j] = 1
                         grad_np[i,j] = accu_value_np.copy()[i,j]
                         self.grad = tf.convert_to_tensor(grad_np, dtype=tf.float32)
-                        # self.grad = tf.print(self.grad)
-                        # print("eps_np " + str(eps_np))
-                        # print("reminder_np[i,j] " + str(reminder_np[i,j]))
-
+        
         return grad_np
 
 
@@ -416,14 +366,13 @@ class Dense_q(Layer_q):
         self.grad = grad
 
         self.eps =  tf.cast( 1/ (2 ** (self.bits - self.grad_range)), tf.float32)    # the smallest value
-        # # compute the avg value
-        # self.grad_avg = tf.reduce_mean(tf.abs(self.grad))
+
         if self.init_f == True:
             self.init_f = False
-            self.reminder = self.grad # buffer
-            self.accu_value =  self.grad + 0.001 # buffer            
-            # self.reminder = tf.constant(0.0, shape=[32,10], dtype=tf.float32) # buffer
-            # self.accu_value =  tf.constant(0.001, shape=[32,10], dtype=tf.float32) # buffer
+            # self.reminder = self.grad # buffer
+            # self.accu_value =  self.grad + 0.001 # buffer            
+            self.reminder = tf.constant(0.0, shape=[self.in_units, self.units], dtype=tf.float32) # buffer
+            self.accu_value =  tf.constant(0.001, shape=[self.in_units, self.units], dtype=tf.float32) # buffer
 
         pre_dense_op = self.pre_dense_func()
 
@@ -492,7 +441,7 @@ class Normalization_q(Layer_q):
         self.name = name
         self.train = training
 
-        with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
+        with tf.variable_scope(self.name):
             self.X_range = tf.get_variable('X_range', dtype=tf.int32,
                 initializer=input_range, trainable=False)
             self.grad_range = tf.get_variable('grad_range', dtype=tf.int32,
@@ -518,9 +467,38 @@ class Normalization_q(Layer_q):
             tf.summary.scalar('X_mean', tf.reduce_mean(self.X))
 
         self.Xq = weight_quantization(self.X, self.target_overflow_rate,
-            self.bits, self.X_range)
+            self.bits, self.X_range)    # quantize input, B, H, W, C
 
         rank = X._rank()
+
+        # (m)
+        self.X_tmp = self.Xq
+        if rank == 2:
+            self.X_tmp = tf.reshape(self.X_tmp, [-1, 1, 1, 10])  # B, H, W, C
+
+        self.num_chunks = 16
+        self.Xq_trans = tf.transpose(self.X_tmp, [3, 0, 1, 2])  # C, B, H, W
+        C, B, H, W = self.Xq_trans.get_shape()
+        self.Xq_trans = tf.cond(
+                        self.train,
+                        lambda: tf.reshape(self.Xq_trans, shape=[C, self.num_chunks, -1]),
+                        lambda: self.Xq,
+        )
+        mean_max = tf.cond(
+            self.train,
+            lambda: tf.reduce_mean( tf.reduce_max(self.Xq_trans, axis=[-1]), axis=[1] ),
+            lambda: self.Xq_trans + 0.1     # don't care
+        )
+        mean_min = tf.cond(
+            self.train,
+            lambda: tf.reduce_mean( tf.reduce_min(self.Xq_trans, axis=[-1]), axis=[1] ),
+            lambda: self.Xq_trans       # don't care
+        )
+
+        scale_fix = 0.5402 / ((2 * math.log(32)) ** 0.5)   # 32 stands for batch_size
+        self.scale = 1 / ((mean_max - mean_min) * scale_fix + self.eps)
+        # (m)
+
         self.X_mean_batch, self.X_var_batch = tf.nn.moments(self.Xq, axes=list(range(rank-1)))
 
         self.X_mean = tf.cond(
@@ -534,6 +512,7 @@ class Normalization_q(Layer_q):
             lambda : self.X_var_running,
         )
 
+        # When training, get mean and var. They can be used directly in testing process.
         # running average
         def update_op(average, variable, momentum):
             return tf.assign(
@@ -547,10 +526,16 @@ class Normalization_q(Layer_q):
         self.mean_update_op = update_op(self.X_mean_running, self.X_mean_batch, self.momentum)
         self.var_update_op = update_op(self.X_var_running, self.X_var_batch, self.momentum)
 
+
         with tf.control_dependencies([self.mean_update_op, self.var_update_op]):
             # TODO: quantize X_mean and X_var?
-            self.y = (self.Xq - self.X_mean) / ((self.X_var + self.eps) ** 0.5)
-
+            # print(self.X)
+            # self.y = (self.Xq - self.X_mean) / ((self.X_var + self.eps) ** 0.5) # Normalized output
+            self.y = tf.cond(
+                self.train,
+                lambda: (self.Xq - self.X_mean) * self.scale,
+                lambda: (self.Xq - self.X_mean) / ((self.X_var + self.eps) ** 0.5)
+            )
         return self.y
 
     def backward(self, grad, stochastic):
@@ -578,7 +563,7 @@ class Rescale_q(Layer_q):
         '''
         self.name = name
 
-        with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
+        with tf.variable_scope(self.name):
             self.gamma = tf.get_variable('g', num_features,
                 initializer=tf.ones_initializer())
             self.beta = tf.get_variable('b', num_features,
@@ -597,9 +582,6 @@ class Rescale_q(Layer_q):
         self.target_overflow_rate = target_overflow_rate
         self.weight_decay = weight_decay
 
-        self.init_flag = True
-        self.rem_flag = False
-        self.init_f = True
 
     def forward(self, X):
         self.X = X
@@ -624,58 +606,8 @@ class Rescale_q(Layer_q):
         return self.y
 
 
-    def pre_rescale_func(self):
-        out = tf.py_func(self._pre_rescale_func,
-                [self.grad_avg, self.grad, self.eps, self.accu_value, self.reminder],
-                tf.float32
-            )
-
-        return out
-
-    def _pre_rescale_func(self, grad_avg_np, grad_np, eps_np, accu_value_np, reminder_np):
-        if self.init_flag == True:
-            # print("------ Gotya ------")
-            if eps_np > grad_avg_np:
-                # print("------ Aha ------")
-                self.init_flag = False
-                if self.rem_flag == True:
-                    accu_value_np = reminder_np.copy() + grad_np.copy()
-                else:
-                    accu_value_np = grad_np.copy()
-                self.accu_value = tf.convert_to_tensor(accu_value_np, dtype=tf.float32)
-        
-        else:
-            # print("--- Small value collected ---")
-            accu_value_np += grad_np.copy()
-            self.accu_value = tf.convert_to_tensor(accu_value_np, dtype=tf.float32)
-            if (np.mean(np.absolute(accu_value_np)) > eps_np):
-                self.init_flag = True
-                if (np.mean(accu_value_np) > 0):
-                    reminder_np = accu_value_np.copy() - (accu_value_np.copy() // eps_np.copy()) * eps_np.copy()
-                else:
-                    reminder_np = accu_value_np.copy() + ((-accu_value_np.copy()) // eps_np.copy()) * eps_np.copy()
-                self.reminder = tf.convert_to_tensor(reminder_np, dtype=tf.float32)
-
-                self.rem_flag = True
-                grad_np = accu_value_np.copy()
-                self.grad = tf.convert_to_tensor(grad_np, dtype=tf.float32)
-
-        return grad_np
-
-
-    def backward(self, grad, stochastic):
-        global pre_rescale_op     
+    def backward(self, grad, stochastic):  
         self.grad = grad
-
-        self.eps =  tf.cast( 1/ (2 ** (self.bits - self.grad_range)), tf.float32)    # the smallest value
-        # compute the avg value
-        self.grad_avg = tf.reduce_mean(tf.abs(self.grad))
-        if self.init_f == True:
-            self.init_f = False
-            self.reminder = self.grad   # buffer
-            self.accu_value = self.grad + 0.001 # buffer
-
-        pre_rescale_op = self.pre_rescale_func()  # (m)
 
         self.gradq = weight_quantization(self.grad, self.target_overflow_rate,
                                          self.bits, self.grad_range, stochastic=stochastic)
@@ -872,7 +804,7 @@ class ResidualBottleneck_q(ResidualBlock_q):
     expansion = 4
 
     def __init__(self, name, bits, in_channels, channels, stride, training, batch_norm=True, weight_decay=0,
-        target_overflow_rate=0, input_range=2, weight_range=2, bias_range=2, grad_range=2):
+        target_overflow_rate=0, input_range=2, weight_range=2, bias_range=2, grad_range=0):
         '''
         Quantized residual bottleneck.
 
