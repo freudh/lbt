@@ -234,6 +234,23 @@ class CIFAR10_Model(Model):
         ]
 
 
+class CIFAR10_Simple(Model):
+    def __init__(self, bits, dropout=0.5, weight_decay=0, stochastic=False):
+        super().__init__(bits, [None, 32, 32, 3], dropout, weight_decay, stochastic)
+
+    def get_layers(self):
+        return [
+            dfxp.Flatten_q(32*32*3),
+            dfxp.Dense_q(
+                name='softmax',
+                bits=self.bits,
+                in_units=32*32*3,
+                units=10,
+                weight_decay=self.weight_decay
+            )
+        ]
+
+
 class CIFAR10_VGG_Model(Model):
     def __init__(self, bits, dropout=0.5, weight_decay=0, stochastic=False):
         super().__init__(bits, [None, 32, 32, 3], dropout, weight_decay, stochastic)
@@ -430,13 +447,19 @@ class CIFAR10_Resnet(Model):
                 use_bias=False,
                 weight_decay=self.weight_decay,
             ),
-            dfxp.BatchNorm_q(
-                name='softmax-bn',
+            dfxp.GradientBuffer_q(
+                name='gradient_buffer',
                 bits=self.bits,
-                num_features=10,
-                training=self.training,
-                weight_decay=self.weight_decay,
+                shape=[32, 10], # TODO use batch size
             ),
+            # dfxp.BatchNorm_q(
+            #     name='softmax-bn',
+            #     bits=self.bits,
+            #     num_features=10,
+            #     training=self.training,
+            #     use_beta=False,
+            #     weight_decay=self.weight_decay,
+            # ),
         ]
 
 
