@@ -17,10 +17,10 @@ from trainer import Trainer
 
 def get_exp_path():
     '''Return new experiment path.'''
-    # return '/home/jmu/cysu_lbt/tmp/log/exp-{0}'.format(
+    return '/home/jmu/cysu_lbt/tmp/log/exp-{0}'.format(
     # return '/home/jiandong/cysu_lbt/tmp/log/exp-{0}'.format(
     # return '/home/piano/lbt/tmp/log/exp-{0}'.format(
-    return '/tmp/log/exp-{0}'.format(
+    # return '/tmp/log/exp-{0}'.format(
         datetime.datetime.now().strftime('%m-%d-%H:%M:%S'))
 
 
