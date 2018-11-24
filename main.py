@@ -1,3 +1,4 @@
+import tensorflow as tf
 import numpy as np
 from tensorflow.keras.datasets import mnist, cifar10
 
@@ -16,6 +17,9 @@ from trainer import Trainer
 
 def get_exp_path():
     '''Return new experiment path.'''
+    # return '/home/jmu/cysu_lbt/tmp/log/exp-{0}'.format(
+    # return '/home/jiandong/cysu_lbt/tmp/log/exp-{0}'.format('
+    # return '/home/piano/lbt/tmp/log/exp-{0}'.format('
     return '/tmp/log/exp-{0}'.format(
         datetime.datetime.now().strftime('%m-%d-%H:%M:%S'))
 
@@ -105,20 +109,19 @@ def get_model_and_dataset(params):
 def main():
     parser = argparse.ArgumentParser(description='DFXP')
     # experiment path
-    parser.add_argument('--exp_path', type=str, default=None,
-                        help='Experiment path')
+    parser.add_argument('--exp_path', type=str, default=None, help='Experiment path')
     # model architecture
     parser.add_argument('--model', type=str, default='CIFAR10_Resnet20', help='Experiment model')
     parser.add_argument('--bits', type=int, default=8, help='DFXP bitwidth')
     parser.add_argument('--dropout', type=float, default=0.5, help='Dropout keep probability')
-    parser.add_argument('--weight_decay', type=float, default=0, help='Weight decay factor')
+    parser.add_argument('--weight_decay', type=float, default=0.0002, help='Weight decay factor')
     # training
     parser.add_argument('--lr', type=float, default=1e-3, help='Initial learning rate')
     parser.add_argument('--lr_decay_factor', type=float, default=0.1, help='Learning rate decay factor')
     parser.add_argument('--lr_decay_epoch', type=int, default=50, help='Learning rate decay epoch')
     parser.add_argument('--momentum', type=float, default=0.9, help='SGD momentum')
     parser.add_argument('--batch_size', type=int, default=32, help='Batch size')
-    parser.add_argument('--n_epoch', type=int, default=150, help='Number of training epoch')
+    parser.add_argument('--n_epoch', type=int, default=160, help='Number of training epoch')
     parser.add_argument('--stochastic', action='store_true', help='Use stochastic quantization in backward pass')
     params = parser.parse_args()
 

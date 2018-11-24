@@ -1,37 +1,57 @@
 import tensorflow as tf
 import numpy as np
+import math
 
 
-def uniform_quantize(X, bits, reduce_axis=0):
+def uniform_quantize(X, bits, stochastic=False):
     '''
-    Quantize input tensor uniformly.
+    Quantize input tensor into low bit presentation.
 
-    When bits == 32, output the original tensor.
-    When bits < 32, quantize X to 2**bits different values with uniform steps.
+    When bits == 32, output the original tensor
 
     Args:
         X: input tensor
-        bits: number of bits after quantization
-        reduce_axis: the reduce axes for min/max, default 0
+        bits: total bits in quantization
+        stochastic: stochastic rounding flag
+
+    Returns:
+        Quantized tensor
     '''
     assert 1 <= bits <= 32, 'invalid value for bits: %d' % bits
     if bits == 32:
         return X
 
+    qmin = 0
+    qmax = 2 ** bits - 1
+    maxval = tf.reduce_max(X)
+    minval = tf.reduce_min(X)    
+
+    scale_factor =  (maxval - minval) / (qmax - qmin)   # also a tensor
+    scale_factor = tf.maximum(scale_factor, 1e-12)
+
+    scale_f = tf.cast(scale_factor, tf.float32)
+    qmin_t = tf.cast(qmin, tf.float32)
+    qmax_t = tf.cast(qmax, tf.float32)
+    
     @tf.custom_gradient
     def identity(X):
-        minval = tf.reduce_mean(tf.reduce_min(X, axis=reduce_axis))
-        maxval = tf.reduce_mean(tf.reduce_max(X, axis=reduce_axis))
-        X_range = tf.maximum(1e-8, maxval - minval)
-        limit = 2 ** bits - 1
-        scale = limit / X_range
-        X = (X - minval) * scale
-        X = tf.round(X)
-        X = X / scale + minval
+        X = tf.round( tf.clip_by_value( (X - minval) / scale_f, qmin_t, qmax_t ) + qmin )   # quantize
+        X = tf.add( (X-qmin) * scale_f, minval )    # dequantize
+
         return X, lambda dy : dy
 
-    return identity(X)
+    @tf.custom_gradient
+    def stochastic_identity(X):
+        X = tf.floor( tf.clip_by_value( ( (X - minval) / scale_f + tf.random_uniform(X.shape[1:], 0, 1) ), 
+                                        qmin_t, qmax_t ) + qmin )   # quantize
+        X = tf.add( (X-qmin) * scale_f, minval )    # dequantize
 
+        return X, lambda dy : dy
+
+    if not stochastic:
+        return identity(X)
+    else:
+        return stochastic_identity(X)
 
 # def weight_quantization(X, target_overflow_rate, bits, integer_bits, stochastic=False):
 #     '''
@@ -57,60 +77,24 @@ def uniform_quantize(X, bits, reduce_axis=0):
 #     @tf.custom_gradient
 #     def identity(X):
 #         multiplier = tf.cast(2 ** (bits - integer_bits - 1), tf.float32)
-#         limit = 2 ** (bits - 1)
-#         X = tf.round(tf.clip_by_value(X * multiplier, -limit, limit-1))
-#         X = X / multiplier
+#         limit = tf.cast(2 ** (bits - 1), tf.float32)
+#         X = tf.round(tf.clip_by_value(X * multiplier, tf.negative(limit), limit-1)) / multiplier
 #         return X, lambda dy : dy
 
 #     @tf.custom_gradient
 #     def stochastic_identity(X):
 #         multiplier = tf.cast(2 ** (bits - integer_bits - 1), tf.float32)
-#         limit = 2 ** (bits - 1)
+#         limit = tf.cast(2 ** (bits - 1), tf.float32)
 #         X = tf.floor(tf.clip_by_value(X * multiplier + tf.random_uniform(X.shape[1:], 0, 1),
 #             tf.negative(limit), limit-1)) / multiplier
 #         return X, lambda dy : dy
 
-#     @tf.custom_gradient
-#     def min_max_identity(X):
-#         # axes = list(range(1, X._rank()))
-#         # minval = tf.reduce_mean(tf.reduce_min(X, axis=axes))
-#         # maxval = tf.reduce_mean(tf.reduce_max(X, axis=axes))
-#         minval = tf.reduce_mean(tf.reduce_min(X, axis=0))
-#         maxval = tf.reduce_mean(tf.reduce_max(X, axis=0))
-#         X_range = tf.maximum(1e-8, maxval - minval)
-#         limit = 2 ** bits - 1
-#         scale = limit / X_range
-#         X = (X - minval) * scale
-#         X = tf.round(X)
-#         X = X / scale + minval
-#         return X, lambda dy : dy
-
-#     @tf.custom_gradient
-#     def min_max_stochastic_identity(X):
-#         axes = list(range(1, X._rank()))
-#         minval = tf.reduce_mean(tf.reduce_min(X, axis=axes))
-#         maxval = tf.reduce_mean(tf.reduce_max(X, axis=axes))
-#         X_range = tf.maximum(1e-8, maxval - minval)
-#         X = (X - minval) / X_range
-#         limit = 2 ** bits - 1
-#         X = X * limit
-#         X += tf.random_uniform(tf.shape(X), -0.5, 0.5) # stochastic rounding
-#         X = tf.clip_by_value(X, 0, limit)
-#         X = tf.round(X)
-#         X = X / limit * X_range + minval
-#         return X, lambda dy : dy
-
-#     # tf.add_to_collection('update_range', update_range(
-#     #     X, target_overflow_rate, bits, integer_bits))
-#     # if not stochastic:
-#     #     # return identity(X)
-#     #     return min_max_identity(X)
-#     # else:
-#     #     return stochastic_identity(X)
+#     tf.add_to_collection('update_range', update_range(
+#         X, target_overflow_rate, bits, integer_bits))
 #     if not stochastic:
-#         return min_max_identity(X)
+#         return identity(X)
 #     else:
-#         return min_max_stochastic_identity(X)
+#         return stochastic_identity(X)
 
 
 def overflow_rate(X, bits, integer_bits):
@@ -158,8 +142,9 @@ def update_range(X, target_overflow_rate, bits, integer_bits):
             lambda : 0
         )
     )
-    # prevent updated integer_bits being too large or too small
-    return tf.assign(integer_bits, tf.maximum(tf.minimum(bits - 1, integer_bits + delta), -20))
+    # prevent updated integer_bits being too large
+    return tf.assign(integer_bits, tf.minimum(bits-1, integer_bits + delta))
+    # return tf.assign( integer_bits, tf.clip_by_value(tf.minimum(bits-1, integer_bits + delta), 1-bits, bits-1) )
 
 
 class Layer_q:
@@ -196,7 +181,7 @@ class Layer_q:
 
 class Conv2d_q(Layer_q):
     def __init__(self, name, bits, ksize, strides, padding, use_bias=True, weight_decay=0,
-        target_overflow_rate=0, input_range=2, weight_range=2, bias_range=2, grad_range=2):
+        target_overflow_rate=0, input_range=2, weight_range=2, bias_range=2, grad_range=0):
         '''
         Quantized 2d convolution.
 
@@ -242,6 +227,12 @@ class Conv2d_q(Layer_q):
         self.target_overflow_rate = target_overflow_rate
         self.weight_decay = weight_decay
 
+        # matrix shape for grad of loss func. over output
+        # self.mat_shape = [  [32,32,32,16], [32,32,32,16], [32,32,32,16], [32,32,32,16], [32,32,32,16], [32,32,32,16], [32,32,32,16],
+        #                     [32,16,16,32], [32,16,16,32], [32,16,16,32], [32,16,16,32], [32,16,16,32], [32,16,16,32], [32,16,16,32],
+        #                     [32,8,8,64], [32,8,8,64], [32,8,8,64], [32,8,8,64], [32,8,8,64], [32,8,8,64], [32,8,8,64]
+        # ]
+
     def forward(self, X):
         self.X = X
 
@@ -251,22 +242,22 @@ class Conv2d_q(Layer_q):
             tf.summary.scalar('grad_range', self.grad_range)
 
             tf.summary.scalar('W_mean', tf.reduce_mean(self.W))
-            tf.summary.scalar('W_max', tf.reduce_max(self.W))
-            tf.summary.scalar('W_min', tf.reduce_min(self.W))
             tf.summary.scalar('X_mean', tf.reduce_mean(self.X))
 
             if self.use_bias:
                 tf.summary.scalar('b_range', self.b_range)
                 tf.summary.scalar('b_mean', tf.reduce_mean(self.b))
-                tf.summary.scalar('b_max', tf.reduce_max(self.b))
-                tf.summary.scalar('b_min', tf.reduce_min(self.b))
 
-        self.Xq = uniform_quantize(self.X, self.bits, reduce_axis=0)
-        self.Wq = uniform_quantize(self.W, self.bits, reduce_axis=[0,1,2])
+        self.Xq = uniform_quantize(self.X, self.bits)
+        self.Wq = uniform_quantize(self.W, self.bits)
+        # self.Xq = weight_quantization(self.X, self.target_overflow_rate,
+        #     self.bits, self.X_range)
+        # self.Wq = weight_quantization(self.W, self.target_overflow_rate,
+        #     self.bits, self.W_range)
         self.y = tf.nn.conv2d(self.Xq, self.Wq, self.strides, self.padding)
 
         if self.use_bias:
-            self.bq = uniform_quantize(self.b, self.bits, reduce_axis=0)
+            self.bq = uniform_quantize(self.b, self.bits)
             self.y = self.y + self.bq
 
         return self.y
@@ -274,19 +265,13 @@ class Conv2d_q(Layer_q):
 
     def backward(self, grad, stochastic):
         self.grad = grad
-        self.gradq = uniform_quantize(grad, self.bits, reduce_axis=3)
+
+        self.gradq = uniform_quantize(self.grad, self.bits)
+        # self.gradq = weight_quantization(self.grad, self.target_overflow_rate,
+        #     self.bits, self.grad_range, stochastic=stochastic)
         self.dW = tf.gradients(self.y, self.W, self.gradq)[0] + 2 * self.weight_decay * self.W
-
-        with tf.name_scope(self.name):
-            tf.summary.scalar('grad_mean', tf.reduce_mean(grad))
-            tf.summary.scalar('grad_max', tf.reduce_max(grad))
-            tf.summary.scalar('grad_min', tf.reduce_min(grad))
-            tf.summary.scalar('gradq_mean', tf.reduce_mean(self.gradq))
-            tf.summary.scalar('gradq_max', tf.reduce_max(self.gradq))
-            tf.summary.scalar('gradq_min', tf.reduce_min(self.gradq))
-
         if self.use_bias:
-            self.db = tf.gradients(self.y, self.b, self.grad)[0]
+            self.db = tf.gradients(self.y, self.b, self.gradq)[0]
         return tf.gradients(self.y, self.X, self.gradq)[0]
 
     def grads_and_vars(self):
@@ -303,7 +288,7 @@ class Conv2d_q(Layer_q):
 
 class Dense_q(Layer_q):
     def __init__(self, name, bits, in_units, units, use_bias=True, weight_decay=0,
-        target_overflow_rate=0, input_range=2, weight_range=2, bias_range=2, grad_range=2):
+        target_overflow_rate=0, input_range=2, weight_range=2, bias_range=2, grad_range=0):
         '''
         Quantized fully connected layer.
 
@@ -321,6 +306,8 @@ class Dense_q(Layer_q):
             grad_range: initial DFXP range for backward gradients
         '''
         limit = (6 / (in_units + units)) ** 0.5
+        self.in_units = in_units
+        self.units = units
         self.name = name
         self.use_bias = use_bias
 
@@ -343,6 +330,13 @@ class Dense_q(Layer_q):
         self.target_overflow_rate = target_overflow_rate
         self.weight_decay = weight_decay
 
+        self.init_flag = np.ones([in_units, units], dtype=int)
+        self.rem_flag = np.zeros([in_units, units], dtype=int)
+        # self.init_flag = np.ones([32, 10], dtype=int)   # special
+        # self.rem_flag = np.zeros([32, 10], dtype=int)   # special
+        
+        self.init_f = True
+
     def forward(self, X):
         self.X = X
 
@@ -352,41 +346,98 @@ class Dense_q(Layer_q):
             tf.summary.scalar('grad_range', self.grad_range)
 
             tf.summary.scalar('W_mean', tf.reduce_mean(self.W))
-            tf.summary.scalar('W_max', tf.reduce_max(self.W))
-            tf.summary.scalar('W_min', tf.reduce_min(self.W))
             tf.summary.scalar('X_mean', tf.reduce_mean(self.X))
 
             if self.use_bias:
                 tf.summary.scalar('b_range', self.b_range)
                 tf.summary.scalar('b_mean', tf.reduce_mean(self.b))
-                tf.summary.scalar('b_max', tf.reduce_max(self.b))
-                tf.summary.scalar('b_min', tf.reduce_min(self.b))
 
-        self.Xq = uniform_quantize(self.X, self.bits, reduce_axis=0)
-        self.Wq = uniform_quantize(self.W, self.bits, reduce_axis=0)
+        self.Xq = uniform_quantize(self.X, self.bits)
+        self.Wq = uniform_quantize(self.W, self.bits)
+        # self.Xq = weight_quantization(self.X, self.target_overflow_rate,
+        #     self.bits, self.X_range)
+        # self.Wq = weight_quantization(self.W, self.target_overflow_rate,
+        #     self.bits, self.W_range)
         self.y = tf.matmul(self.Xq, self.Wq)
 
         if self.use_bias:
-            self.bq = uniform_quantize(self.b, self.bits, reduce_axis=0)
+            self.bq = uniform_quantize(self.b, self.bits)
+            # self.bq = weight_quantization(self.b, self.target_overflow_rate,
+            #     self.bits, self.b_range)
             self.y = self.y + self.bq
 
         return self.y
 
+
+    def pre_dense_func(self):
+        out = tf.py_func(self._pre_dense_func,
+                [self.grad, self.eps, self.accu_value, self.grad_min_pre],
+                tf.float32
+            )
+
+        return out
+
+    def _pre_dense_func(self, grad_np, eps_np, accu_value_np, grad_min_pre_np):      
+        dim1 = np.shape(grad_np)[0]
+        dim2 = np.shape(grad_np)[1]
+        for i in range(dim1):
+            for j in range(dim2):
+                if self.init_flag[i,j] == 1:
+                    if eps_np > (grad_np[i,j] - grad_min_pre_np):
+                        self.init_flag[i,j] = 0
+
+                        if self.rem_flag[i,j] == 1:
+                            accu_value_np[i,j] = accu_value_np.copy()[i,j] + (grad_np.copy()[i,j] - grad_min_pre_np.copy())
+                        else:
+                            accu_value_np[i,j] = grad_np.copy()[i,j] - grad_min_pre_np.copy()
+                        self.accu_value = tf.convert_to_tensor(accu_value_np, dtype=tf.float32)
+                
+                else:
+                    # print("--- Small value collected ---")
+                    accu_value_np[i,j] += ( grad_np.copy()[i,j] - grad_min_pre_np.copy() )
+                    self.accu_value = tf.convert_to_tensor(accu_value_np, dtype=tf.float32)
+
+                    if (accu_value_np[i,j] > eps_np):
+                        self.init_flag[i,j] = 1
+                        grad_np[i,j] = accu_value_np.copy()[i,j]
+                        self.grad = tf.convert_to_tensor(grad_np, dtype=tf.float32)
+
+                        # accu_value_np[i,j] > 0
+                        accu_value_np[i,j] = accu_value_np.copy()[i,j] - (accu_value_np.copy()[i,j] // eps_np.copy()) * eps_np.copy()
+
+                        self.accu_value = tf.convert_to_tensor(accu_value_np, dtype=tf.float32)
+                        self.rem_flag[i,j] = 1
+        
+        return grad_np
+
+
     def backward(self, grad, stochastic):
+        global pre_dense_op     
         self.grad = grad
-        self.gradq = uniform_quantize(grad, self.bits, reduce_axis=0)
-        self.dW = tf.gradients(self.y, self.W, self.grad)[0] + 2 * self.weight_decay * self.W
 
-        with tf.name_scope(self.name):
-            tf.summary.scalar('grad_mean', tf.reduce_mean(grad))
-            tf.summary.scalar('grad_max', tf.reduce_max(grad))
-            tf.summary.scalar('grad_min', tf.reduce_min(grad))
-            tf.summary.scalar('gradq_mean', tf.reduce_mean(self.gradq))
-            tf.summary.scalar('gradq_max', tf.reduce_max(self.gradq))
-            tf.summary.scalar('gradq_min', tf.reduce_min(self.gradq))
+        self.grad_min_pre = tf.reduce_min(self.grad)
+        self.grad_max_pre = tf.reduce_max(self.grad)
 
+        self.eps = tf.cast( (self.grad_max_pre - self.grad_min_pre) / ( 2 * (2**self.bits - 1) ), 
+                            tf.float32)
+
+        # self.eps =  tf.cast( 1/ (2 ** (self.bits - self.grad_range)), tf.float32)    # the smallest value
+
+        if self.init_f == True:
+            self.init_f = False
+            # self.reminder = self.grad # buffer
+            # self.accu_value =  self.grad + 0.001 # buffer            
+            # self.reminder = tf.constant(0.0, shape=[self.in_units, self.units], dtype=tf.float32) # buffer
+            self.accu_value =  tf.constant(0.001, shape=[self.in_units, self.units], dtype=tf.float32) # buffer
+
+        pre_dense_op = self.pre_dense_func()
+
+        self.gradq = uniform_quantize(self.grad, self.bits)
+        # self.gradq = weight_quantization(self.grad, self.target_overflow_rate,
+        #     self.bits, self.grad_range, stochastic=stochastic)
+        self.dW = tf.gradients(self.y, self.W, self.gradq)[0] + 2 * self.weight_decay * self.W
         if self.use_bias:
-            self.db = tf.gradients(self.y, self.b, self.grad)[0]
+            self.db = tf.gradients(self.y, self.b, self.gradq)[0]
         return tf.gradients(self.y, self.X, self.gradq)[0]
 
     def grads_and_vars(self):
@@ -398,41 +449,6 @@ class Dense_q(Layer_q):
     def info(self):
         return '%d bits dense: %dx%d weight_decay %f' % (
             self.bits, self.W.shape[0], self.W.shape[1], self.weight_decay)
-
-
-class GradientBuffer_q(Layer_q):
-    def __init__(self, name, bits, shape):
-        '''
-        Gradient buffer layer.
-
-        Args:
-            name: name of the layer
-            bits: total number of bits for DFXP
-            shape: gradient shape
-        '''
-        self.name = name
-        self.bits = bits
-        self.shape = tf.constant(shape)
-
-        with tf.variable_scope(self.name):
-            self.buffer = tf.get_variable('buffer', shape,
-                initializer=tf.zeros_initializer())
-
-    def backward(self, grad, stochastic):
-        self.grad = grad
-        paddings = tf.expand_dims(self.shape - tf.shape(self.grad), -1) # [rank, 1]
-        paddings = tf.concat([tf.zeros([self.grad._rank(), 1], tf.int32),
-            paddings], axis=1) # [rank, 2]
-        self.total_grad = tf.pad(self.grad, paddings) + self.buffer
-        self.gradq = uniform_quantize(self.total_grad, self.bits, reduce_axis=0)
-
-        update_buffer_op = tf.assign(self.buffer, self.total_grad - self.gradq)
-        tf.add_to_collection(tf.GraphKeys.UPDATE_OPS, update_buffer_op)
-
-        return self.gradq[:tf.shape(self.grad)[0]]
-
-    def info(self):
-        return 'Gradient buffer'
 
 
 class Sequential_q(Layer_q):
@@ -507,7 +523,7 @@ class Normalization_q(Layer_q):
 
             tf.summary.scalar('X_mean', tf.reduce_mean(self.X))
 
-        self.Xq = uniform_quantize(self.X, self.bits, reduce_axis=0)
+        self.Xq = uniform_quantize(self.X, self.bits)    # quantize input, B, H, W, C
 
         rank = X._rank()
         self.X_mean_batch, self.X_var_batch = tf.nn.moments(self.Xq, axes=list(range(rank-1)))
@@ -536,14 +552,14 @@ class Normalization_q(Layer_q):
         self.mean_update_op = update_op(self.X_mean_running, self.X_mean_batch, self.momentum)
         self.var_update_op = update_op(self.X_var_running, self.X_var_batch, self.momentum)
 
+
         with tf.control_dependencies([self.mean_update_op, self.var_update_op]):
             # TODO: quantize X_mean and X_var?
-            self.y = (self.Xq - self.X_mean) / ((self.X_var + self.eps) ** 0.5)
-
+            self.y = (self.Xq - self.X_mean) / ((self.X_var + self.eps) ** 0.5) # Normalized output
         return self.y
 
     def backward(self, grad, stochastic):
-        self.gradq = uniform_quantize(grad, self.bits, reduce_axis=0)
+        self.gradq = uniform_quantize(grad, self.bits)
         return tf.gradients(self.y, self.X, self.gradq)[0]
 
 
@@ -588,7 +604,7 @@ class RangeNormalization_q(Layer_q):
 
     def forward(self, X):
         self.X = X
-        self.Xq = uniform_quantize(self.X, self.bits, reduce_axis=0)
+        self.Xq = uniform_quantize(self.X, self.bits)
 
         axes = list(range(X._rank()-1))
         self.X_min_batch = tf.reduce_min(self.Xq, axis=axes)
@@ -631,7 +647,7 @@ class RangeNormalization_q(Layer_q):
         return self.y
 
     def backward(self, grad, stochastic):
-        self.gradq = uniform_quantize(grad, self.bits, reduce_axis=0)
+        self.gradq = uniform_quantize(grad, self.bits)
         return tf.gradients(self.y, self.X, self.gradq)[0]
 
 
@@ -677,6 +693,7 @@ class Rescale_q(Layer_q):
         self.target_overflow_rate = target_overflow_rate
         self.weight_decay = weight_decay
 
+
     def forward(self, X):
         self.X = X
 
@@ -696,22 +713,25 @@ class Rescale_q(Layer_q):
                 tf.summary.scalar('b_max', tf.reduce_max(self.beta))
                 tf.summary.scalar('b_min', tf.reduce_min(self.beta))
 
-        self.Xq = uniform_quantize(self.X, self.bits, reduce_axis=0)
-        self.gq = uniform_quantize(self.gamma, self.bits, reduce_axis=0)
+        self.Xq = uniform_quantize(self.X, self.bits)
+        self.gq = uniform_quantize(self.gamma, self.bits)
         self.y = self.Xq * self.gq
 
         if self.use_beta:
-            self.bq = uniform_quantize(self.beta, self.bits, reduce_axis=0)
+            self.bq = uniform_quantize(self.beta, self.bits)
             self.y += self.bq
-
+        
         return self.y
 
-    def backward(self, grad, stochastic):
+    def backward(self, grad, stochastic):  
         self.grad = grad
-        self.gradq = uniform_quantize(grad, self.bits, reduce_axis=0)
-        self.dgamma = tf.gradients(self.y, self.gamma, self.grad)[0] + 2 * self.weight_decay * self.gamma
+
+        self.gradq = uniform_quantize(self.grad, self.bits)
+        # self.gradq = weight_quantization(self.grad, self.target_overflow_rate,
+        #                                  self.bits, self.grad_range, stochastic=stochastic)
+        self.dgamma = tf.gradients(self.y, self.gamma, self.gradq)[0] + 2 * self.weight_decay * self.gamma
         if self.use_beta:
-            self.dbeta = tf.gradients(self.y, self.beta, self.grad)[0]
+            self.dbeta = tf.gradients(self.y, self.beta, self.gradq)[0]
         return tf.gradients(self.y, self.X, self.gradq)[0]
 
     def grads_and_vars(self):
@@ -774,6 +794,7 @@ class BatchNorm_q(Sequential_q):
         return 'BatchNorm'
 
 
+
 class ResidualBlock_q(Layer_q):
     expansion = 1
 
@@ -808,7 +829,6 @@ class ResidualBlock_q(Layer_q):
                 padding='SAME',
                 use_bias=not batch_norm,
                 weight_decay=weight_decay,
-                target_overflow_rate=target_overflow_rate,
                 input_range=input_range,
                 weight_range=weight_range,
                 bias_range=bias_range,
@@ -833,7 +853,6 @@ class ResidualBlock_q(Layer_q):
                 padding='SAME',
                 use_bias=not batch_norm,
                 weight_decay=weight_decay,
-                target_overflow_rate=target_overflow_rate,
                 input_range=input_range,
                 weight_range=weight_range,
                 bias_range=bias_range,
@@ -912,7 +931,7 @@ class ResidualBottleneck_q(ResidualBlock_q):
     expansion = 4
 
     def __init__(self, name, bits, in_channels, channels, stride, training, batch_norm=True, weight_decay=0,
-        target_overflow_rate=0, input_range=2, weight_range=2, bias_range=2, grad_range=2):
+        target_overflow_rate=0, input_range=2, weight_range=2, bias_range=2, grad_range=0):
         '''
         Quantized residual bottleneck.
 
@@ -943,7 +962,6 @@ class ResidualBottleneck_q(ResidualBlock_q):
                 padding='SAME',
                 use_bias=not batch_norm,
                 weight_decay=weight_decay,
-                target_overflow_rate=target_overflow_rate,
                 input_range=input_range,
                 weight_range=weight_range,
                 bias_range=bias_range,
@@ -968,7 +986,6 @@ class ResidualBottleneck_q(ResidualBlock_q):
                 padding='SAME',
                 use_bias=not batch_norm,
                 weight_decay=weight_decay,
-                target_overflow_rate=target_overflow_rate,
                 input_range=input_range,
                 weight_range=weight_range,
                 bias_range=bias_range,
@@ -993,7 +1010,6 @@ class ResidualBottleneck_q(ResidualBlock_q):
                 padding='SAME',
                 use_bias=not batch_norm,
                 weight_decay=weight_decay,
-                target_overflow_rate=target_overflow_rate,
                 input_range=input_range,
                 weight_range=weight_range,
                 bias_range=bias_range,
@@ -1087,3 +1103,29 @@ class Flatten_q(Layer_q):
 
     def info(self):
         return 'flatten'
+
+
+def main():
+    '''Tester.'''
+    x = tf.placeholder(tf.float32, [None, 3, 3, 1])
+    conv = Conv2d_q(8, [2, 2, 1, 1], [1, 1, 1, 1], 'VALID', 0.01, 5, 2, 2, 5)
+    y = conv.forward(x)
+    loss = tf.reduce_sum(y ** 2)
+    dy = tf.gradients(loss, y)[0]
+    conv.backward(dy)
+    update_range_op = tf.get_collection('update_range')
+    optimizer = tf.train.MomentumOptimizer(2e-3, 0.9)
+    grads_and_vars = conv.grads_and_vars()
+    train_op = optimizer.apply_gradients(grads_and_vars)
+    init_op = tf.global_variables_initializer()
+    with tf.Session() as sess:
+        sess.run(init_op)
+        a = np.arange(9).reshape([1, 3, 3, 1])
+
+        for _ in range(300):
+            _, loss_f, _, _ = sess.run([train_op, loss, conv.W, update_range_op], feed_dict={x: a})
+            print('loss_f: %f' % loss_f)
+
+
+if __name__ == '__main__':
+    main()
