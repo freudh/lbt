@@ -11,4 +11,4 @@
 
 2018.11.27 ReLU Tricks
 
-2018.11.28 Linear_q, Quantize grad. in Dense layer on batch axis(32 respectively)
+2018.11.28 Linear_q, Quantize grad. in Dense layer on channel axis(10 respectively)
