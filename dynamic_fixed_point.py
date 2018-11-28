@@ -415,8 +415,8 @@ class Dense_q(Layer_q):
         # self.rem_flag = np.zeros([in_units, units], dtype=int)
         # self.init_flag = np.ones([32, 10], dtype=int)   # special
         # self.rem_flag = np.zeros([32, 10], dtype=int)   # special
-        self.minval = np.ones(32, dtype=float)
-        self.maxval = np.zeros(32, dtype=float)
+        self.minval = np.ones(10, dtype=float)
+        self.maxval = np.zeros(10, dtype=float)
 
         self.init_f = True
 
@@ -466,11 +466,13 @@ class Dense_q(Layer_q):
 
     def _pre_dense_func(self, grad_np, bits_np):      
         dim1 = np.shape(grad_np)[0]     # 32
+        dim2 = np.shape(grad_np)[1]     # 10
         fsr = 2 ** bits_np - 1
 
         # print(grad_np[0])
+        grad_np = grad_np.transpose((1,0))
 
-        for i in range(dim1):
+        for i in range(dim2):
             self.minval[i] = np.min(grad_np[i])
             self.maxval[i] = np.max(grad_np[i])
 
@@ -481,25 +483,26 @@ class Dense_q(Layer_q):
                 (grad_np.copy()[i] - self.minval[i]) / scale
             )   * scale + self.minval[i]
 
+        grad_np = grad_np.transpose((1,0))
+
         self.grad = tf.convert_to_tensor(grad_np, dtype=tf.float32)
         return grad_np
 
 
     def backward(self, grad, stochastic):
         global pre_dense_op     # deal with grad on mini-batch axis
-        global print_op
-        global print_op1
-        global print_op2
-
+        # global print_op
+        # global print_op1
+        # global print_op2
 
         self.grad = grad
 
-        print_op1 = tf.print(grad)
-        print_op = tf.print("---------------------")
+        # print_op1 = tf.print(grad)
+        # print_op = tf.print("---------------------")
 
         pre_dense_op = self.pre_dense_func()
 
-        print_op2 = tf.print(self.grad)
+        # print_op2 = tf.print(self.grad)
 
         # self.gradq = uniform_quantize(self.grad, self.bits, reduce_axis=0)
 
