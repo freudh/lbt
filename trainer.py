@@ -1,11 +1,11 @@
 import numpy as np
 import tensorflow as tf
 
-import dynamic_fixed_point as dfxp
 from random import randrange
 
+import dynamic_fixed_point as dfxp
 
-def batch_generator(X, y, shuffle=True, batch_size=64):
+def batch_generator(X, y, shuffle=True, batch_size=32):
     n = X.shape[0]
     n_batch = (n-1)//batch_size + 1
 
@@ -30,9 +30,8 @@ def preprocess_image(image, label):
 
 class Trainer:
     def __init__(self, model, dataset, logger, logdir,
-                 lr=1e-2, lr_decay_factor=0.5, lr_decay_epoch=50,
-                 momentum=0.95, n_epoch=5, batch_size=128):
-
+                 lr=1e-3, lr_decay_factor=0.1, lr_decay_epoch=50,
+                 momentum=0.9, n_epoch=50, batch_size=32):
         self.model = model
         self.model.backward()
 
@@ -67,10 +66,12 @@ class Trainer:
 
         # reduce memory usage
         config = tf.ConfigProto()
-        config.gpu_options.allow_growth = True #pylint: disable=E1101
+        config.gpu_options.allow_growth = True
         self.sess = tf.Session(config=config)
         self.train_writer = tf.summary.FileWriter(logdir+'/train', self.sess.graph)
         self.test_writer = tf.summary.FileWriter(logdir+'/test', self.sess.graph)
+
+        self.epoch_idx = tf.Variable(0, dtype=tf.int32, trainable=False)
 
     def init_model(self):
         self.logger.info('Initializing model')
@@ -106,6 +107,7 @@ class Trainer:
 
         return train_iterator, test_iterator
 
+
     def train(self):
         self.logger.info('Start of training')
 
@@ -115,6 +117,9 @@ class Trainer:
         test_iter_init_op = self.test_iterator.initializer
 
         for epoch in range(self.n_epoch):
+            # epoch_idx_update = tf.assign(self.epoch_idx, epoch)
+            # print(macros.epoch)
+            # exit()
             if epoch == 0:
                 self.logger.info('New training optimizer with lr=%f' % self.lr)
                 train_op = self.get_train_op()
@@ -125,7 +130,8 @@ class Trainer:
             elif epoch == 120:
                 self.lr *= self.lr_decay_factor
                 self.logger.info('New training optimizer with lr=%f' % self.lr)
-                train_op = self.get_train_op()   
+                train_op = self.get_train_op()                     
+
 
             # if epoch % self.lr_decay_epoch == 0:
             #     self.logger.info('New training optimizer with lr=%f' % self.lr)
@@ -141,23 +147,28 @@ class Trainer:
                 try:
                     X, y = self.sess.run(next_train_op)
                     b += 1
-                    if b % 100 == 0:
+                    if b % 100 == 0: 
                         _, _, loss, acc, summary, step, _ = self.sess.run([train_op, self.update_range_op,
                             self.model.loss, self.model.accuracy, self.summary, self.global_step,
                             dfxp.pre_dense_op,
+                            # dfxp.print_op1,
+                            # dfxp.print_op,
+                            # dfxp.print_op2,
                             ],
                             feed_dict={self.model.input_X: X, self.model.input_y: y})
                         self.train_writer.add_summary(summary, step)
                         self.logger.info('Batch %d loss %f acc %f' % (b, loss, acc))
                     else:
                         self.sess.run([train_op, self.update_range_op,
-                            dfxp.pre_dense_op,        
-                            ], feed_dict={self.model.input_X: X, self.model.input_y: y})
+                            dfxp.pre_dense_op,
+                            # dfxp.print_op1,
+                            # dfxp.print_op,
+                            # dfxp.print_op2,
+                            ], 
+                            feed_dict={self.model.input_X: X, self.model.input_y: y})
                 except tf.errors.OutOfRangeError:
                     break
 
-            # TODO BatchNorm bug
-            # self.sess.run(self.model.set_testing)
             self.sess.run(test_iter_init_op, feed_dict={
                 self.X_test_placeholder: self.X_test,
                 self.y_test_placeholder: self.y_test,

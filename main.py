@@ -1,3 +1,4 @@
+import tensorflow as tf
 import numpy as np
 from tensorflow.keras.datasets import mnist, cifar10
 
@@ -17,6 +18,8 @@ from trainer import Trainer
 def get_exp_path():
     '''Return new experiment path.'''
     # return '/home/jmu/cysu_lbt/tmp/log/exp-{0}'.format(
+    # return '/home/jiandong/cysu_lbt/tmp/log/exp-{0}'.format(
+    # return '/home/piano/lbt/tmp/log/exp-{0}'.format(
     return '/tmp/log/exp-{0}'.format(
         datetime.datetime.now().strftime('%m-%d-%H:%M:%S'))
 
@@ -106,8 +109,7 @@ def get_model_and_dataset(params):
 def main():
     parser = argparse.ArgumentParser(description='DFXP')
     # experiment path
-    parser.add_argument('--exp_path', type=str, default=None,
-                        help='Experiment path')
+    parser.add_argument('--exp_path', type=str, default=None, help='Experiment path')
     # model architecture
     parser.add_argument('--model', type=str, default='CIFAR10_Resnet20', help='Experiment model')
     parser.add_argument('--bits', type=int, default=8, help='DFXP bitwidth')
