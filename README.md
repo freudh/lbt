@@ -10,3 +10,5 @@
 2018.11.26 Using tf.cond() to determine maxval
 
 2018.11.27 ReLU Tricks
+
+2018.11.28 Linear_q, Quantize grad. in Dense layer on batch axis(32 respectively)
