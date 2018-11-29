@@ -9,6 +9,6 @@ Milestone
 To be verified
 
 2018.11.28 Linear_q, Quantize grad. in Dense layer on channel axis(10 respectively)
-Comments:   87.4% -> 88.0%, not stable
+(87.4% -> 88.0%, not stable)
 
 2018.11.29 Linear_q, Quantize weight in ALL conv layer on channel axis.
