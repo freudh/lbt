@@ -12,3 +12,5 @@
 2018.11.27 ReLU Tricks
 
 2018.11.28 Linear_q, Quantize grad. in Dense layer on channel axis(10 respectively)
+
+2018.11.29 Linear_q, Quantize weight in ALL conv layer on channel axis.
