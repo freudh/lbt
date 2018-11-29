@@ -45,6 +45,43 @@ def weight_quantization(X, target_overflow_rate, bits, integer_bits, stochastic=
     else:
         return stochastic_identity(X)
 
+def tanh_quantization(X, bits, stochastic=False):
+    '''
+    Quantize input weight tensor according to the DFXP format.(DoReFa)
+
+    Returns:
+        Quantized tensor
+    '''
+    assert 1 <= bits <= 32, 'invalid value for bits: %d' % bits
+    if bits == 32:
+        return X
+    
+    fsr = 2 ** bits
+
+    tanh_X = tf.tanh(X)
+    maxval = tf.reduce_max(tf.abs(tanh_X))   # max(tanh_X)
+
+    ipt = tanh_X / (2.0 * maxval) + 0.5 # [0,1]
+
+    # quantize
+    @tf.custom_gradient
+    def identity(X):
+        X = 2 * tf.round( tf.clip_by_value(ipt * fsr, 0, fsr-1) ) / fsr - 1
+
+        return X, lambda dy : dy
+    
+    @tf.custom_gradient
+    def stochastic_identity(X):
+        X = 2 * tf.floor( tf.clip_by_value(ipt * fsr + tf.random_uniform(X.shape[1:], 0, 1),
+                                           0, fsr) ) / fsr - 1
+
+        return X, lambda dy : dy
+
+    if not stochastic:
+        return identity(X)
+    else:
+        return stochastic_identity(X)
+
 
 def overflow_rate(X, bits, integer_bits):
     '''
@@ -192,8 +229,9 @@ class Conv2d_q(Layer_q):
 
         self.Xq = weight_quantization(self.X, self.target_overflow_rate,
             self.bits, self.X_range)
-        self.Wq = weight_quantization(self.W, self.target_overflow_rate,
-            self.bits, self.W_range)
+        # self.Wq = weight_quantization(self.W, self.target_overflow_rate,
+        #     self.bits, self.W_range)
+        self.Wq = tanh_quantization(self.W, self.bits)
         self.y = tf.nn.conv2d(self.Xq, self.Wq, self.strides, self.padding)
 
         if self.use_bias:
@@ -277,6 +315,10 @@ class Dense_q(Layer_q):
 
 
     def forward(self, X):
+        # global print_op
+        # global print_op1
+        # global print_op2
+
         self.X = X
 
         with tf.name_scope(self.name):
@@ -293,8 +335,13 @@ class Dense_q(Layer_q):
 
         self.Xq = weight_quantization(self.X, self.target_overflow_rate,
             self.bits, self.X_range)
-        self.Wq = weight_quantization(self.W, self.target_overflow_rate,
-            self.bits, self.W_range)
+        # self.Wq = weight_quantization(self.W, self.target_overflow_rate,
+        #     self.bits, self.W_range)
+        # print_op1 = tf.print(self.W)
+        self.Wq = tanh_quantization(self.W, self.bits)
+        # print_op = tf.print(self.Wq)
+
+        # print_op2 = tf.print("-----------------------------")
         self.y = tf.matmul(self.Xq, self.Wq)
 
         if self.use_bias:
