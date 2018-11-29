@@ -395,7 +395,7 @@ class CIFAR10_Resnet(Model):
     def get_layers(self):
         self.channels = 16
         return [
-            dfxp.Conv2d_q(
+            dfxp.Conv2d_fq(
                 name='conv1',
                 bits=self.bits,
                 ksize=[3, 3, 3, 16],
@@ -403,7 +403,7 @@ class CIFAR10_Resnet(Model):
                 padding='SAME',
                 use_bias=False,
                 weight_decay=self.weight_decay,
-            ),
+            ),  # the first layer, and the conv layer
             dfxp.BatchNorm_q(
                 name='conv1-bn',
                 bits=self.bits,

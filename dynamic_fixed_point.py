@@ -255,14 +255,12 @@ class Layer_q:
         '''
         return 'quantized layer (default identity)'
 
-
-# here
-class Conv2d_q(Layer_q):
+# (m)
+class Conv2d_fq(Layer_q):
     def __init__(self, name, bits, ksize, strides, padding, use_bias=True, weight_decay=0,
         target_overflow_rate=0, input_range=2, weight_range=2, bias_range=2, grad_range=0):
         '''
         Quantized 2d convolution.
-
         Args:
             name: name of the layer
             bits: total number of bits for DFXP
@@ -305,11 +303,147 @@ class Conv2d_q(Layer_q):
         self.target_overflow_rate = target_overflow_rate
         self.weight_decay = weight_decay
 
-        # matrix shape for grad of loss func. over output
-        # self.mat_shape = [  [32,32,32,16], [32,32,32,16], [32,32,32,16], [32,32,32,16], [32,32,32,16], [32,32,32,16], [32,32,32,16],
-        #                     [32,16,16,32], [32,16,16,32], [32,16,16,32], [32,16,16,32], [32,16,16,32], [32,16,16,32], [32,16,16,32],
-        #                     [32,8,8,64], [32,8,8,64], [32,8,8,64], [32,8,8,64], [32,8,8,64], [32,8,8,64], [32,8,8,64]
-        # ]
+    def pre_conv_func(self):
+        out = tf.py_func(self._pre_conv_func,
+                [self.W, self.bits],
+                tf.float32,
+        )
+        return out
+
+    def _pre_conv_func(self, W_np, bits_np):
+        dim = np.shape(W_np)[3]
+        fsr = 2 ** bits_np - 1
+        eps = 1e-10
+
+        maxval = np.zeros(dim, dtype=float)
+        minval = np.ones(dim, dtype=float)
+        W_np = W_np.transpose((3,0,1,2))
+        for i in range(dim):
+            minval[i] = np.min(W_np[i])
+            maxval[i] = np.max(W_np[i])
+            # quantize
+            scale = (maxval[i] - minval[i]) / fsr + eps  # prevent 0
+
+            W_np[i] = np.around(
+                (W_np.copy()[i] - minval.copy()[i]) / scale
+            ) * scale + minval.copy()[i]
+
+        W_np = W_np.transpose((1,2,3,0))
+
+        self.W = tf.convert_to_tensor(W_np, dtype=tf.float32)
+        return W_np
+
+    def forward(self, X):
+        global pre_conv_op
+        self.X = X
+
+        with tf.name_scope(self.name):
+            tf.summary.scalar('W_range', self.W_range)
+            tf.summary.scalar('X_range', self.X_range)
+            tf.summary.scalar('grad_range', self.grad_range)
+
+            tf.summary.scalar('W_mean', tf.reduce_mean(self.W))
+            tf.summary.scalar('X_mean', tf.reduce_mean(self.X))
+
+            if self.use_bias:
+                tf.summary.scalar('b_range', self.b_range)
+                tf.summary.scalar('b_mean', tf.reduce_mean(self.b))
+
+        self.Xq = uniform_quantize(self.X, self.bits, reduce_axis=0)
+        # self.Wq = uniform_quantize(self.W, self.bits, reduce_axis=[0,1,2])  # fix
+        pre_conv_op = self.pre_conv_func()
+
+
+        # self.Wp = tf.transpose(self.Wq, [3,0,1,2])
+        # print_op = tf.print(self.Wp[0])
+        # print_op1 = tf.print(tf.shape(self.Wp))
+
+        # self.Xq = weight_quantization(self.X, self.target_overflow_rate,
+        #     self.bits, self.X_range)
+        # self.Wq = weight_quantization(self.W, self.target_overflow_rate,
+        #     self.bits, self.W_range)
+        
+        # self.y = tf.nn.conv2d(self.Xq, self.Wq, self.strides, self.padding) # fix
+        self.y = tf.nn.conv2d(self.Xq, self.W, self.strides, self.padding)
+
+        if self.use_bias:
+            self.bq = uniform_quantize(self.b, self.bits, reduce_axis=0)
+            self.y = self.y + self.bq
+
+        return self.y
+
+
+    def backward(self, grad, stochastic):
+        self.grad = grad
+
+        self.gradq = uniform_quantize(self.grad, self.bits, reduce_axis=3)
+
+        # self.gradq = weight_quantization(self.grad, self.target_overflow_rate,
+        #     self.bits, self.grad_range, stochastic=stochastic)
+        self.dW = tf.gradients(self.y, self.W, self.gradq)[0] + 2 * self.weight_decay * self.W
+        if self.use_bias:
+            self.db = tf.gradients(self.y, self.b, self.gradq)[0]
+        return tf.gradients(self.y, self.X, self.gradq)[0]
+
+    def grads_and_vars(self):
+        if self.use_bias:
+            return [(self.dW, self.W), (self.db, self.b)]
+        else:
+            return [(self.dW, self.W)]
+
+    def info(self):
+        return '%d bits conv2d: %dx%dx%d stride %dx%d pad %s weight_decay %f' % (
+            self.bits, self.ksize[0], self.ksize[1], self.ksize[3],
+            self.strides[1], self.strides[2], self.padding, self.weight_decay)
+# (m)
+
+# here
+class Conv2d_q(Layer_q):
+    def __init__(self, name, bits, ksize, strides, padding, use_bias=True, weight_decay=0,
+        target_overflow_rate=0, input_range=2, weight_range=2, bias_range=2, grad_range=0):
+        '''
+        Quantized 2d convolution.
+        Args:
+            name: name of the layer
+            bits: total number of bits for DFXP
+            ksize: kernel size, [h, w, Cin, Cout]
+            strides: convolution strides, 4-dimension as input_size
+            padding: padding scheme, 'SAME' or 'VALID'
+            use_bias: whether to use bias
+            weight_decay: L2 normalization factor
+            target_overflow_rate: target overflow rate
+            input_range: initial DFXP range for inputs
+            weight_range: initial DFXP range for weights
+            bias_range: initial DFXP range for bias
+            grad_range: initial DFXP range for backward gradients
+        '''
+        h, w, Cin, Cout = self.ksize = ksize
+        self.strides = strides
+        self.padding = padding
+        in_units = h * w * Cin
+        limit = (3 / in_units) ** 0.5
+
+        self.name = name
+        self.use_bias = use_bias
+
+        with tf.variable_scope(self.name):
+            self.W = tf.Variable(tf.random_uniform(ksize, -limit, limit))
+
+            self.W_range = tf.get_variable('W_range', dtype=tf.int32,
+                initializer=weight_range, trainable=False)
+            self.X_range = tf.get_variable('X_range', dtype=tf.int32,
+                initializer=input_range, trainable=False)
+            self.grad_range = tf.get_variable('grad_range', dtype=tf.int32,
+                initializer=grad_range, trainable=False)
+
+            if self.use_bias:
+                self.b = tf.get_variable('b', Cout, initializer=tf.zeros_initializer())
+                self.b_range = tf.get_variable('b_range', dtype=tf.int32,
+                    initializer=bias_range, trainable=False)
+
+        self.bits = bits
+        self.target_overflow_rate = target_overflow_rate
+        self.weight_decay = weight_decay
 
     def forward(self, X):
         self.X = X
