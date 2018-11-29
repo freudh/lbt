@@ -468,6 +468,7 @@ class Dense_q(Layer_q):
         dim1 = np.shape(grad_np)[0]     # 32
         dim2 = np.shape(grad_np)[1]     # 10
         fsr = 2 ** bits_np - 1
+        eps = 1e-10
 
         # print(grad_np[0])
         grad_np = grad_np.transpose((1,0))
@@ -477,7 +478,7 @@ class Dense_q(Layer_q):
             self.maxval[i] = np.max(grad_np[i])
 
             # quantize
-            scale = (self.maxval[i] - self.minval[i]) / fsr
+            scale = (self.maxval[i] - self.minval[i]) / fsr + eps   # prevent 0
 
             grad_np[i] = np.around(
                 (grad_np.copy()[i] - self.minval[i]) / scale
