@@ -335,10 +335,10 @@ class Dense_q(Layer_q):
 
         self.Xq = weight_quantization(self.X, self.target_overflow_rate,
             self.bits, self.X_range)
-        # self.Wq = weight_quantization(self.W, self.target_overflow_rate,
-        #     self.bits, self.W_range)
+        self.Wq = weight_quantization(self.W, self.target_overflow_rate,
+            self.bits, self.W_range)
         # print_op1 = tf.print(self.W)
-        self.Wq = tanh_quantization(self.W, self.bits)
+        # self.Wq = tanh_quantization(self.W, self.bits)
         # print_op = tf.print(self.Wq)
 
         # print_op2 = tf.print("-----------------------------")
