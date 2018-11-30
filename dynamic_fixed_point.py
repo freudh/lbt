@@ -56,26 +56,31 @@ def tanh_quantization(X, bits, stochastic=False):
     if bits == 32:
         return X
     
-    fsr = 2 ** bits
+    fsr = 2 ** bits - 1
 
     tanh_X = tf.tanh(X)
     maxval = tf.reduce_max(tf.abs(tanh_X))   # max(tanh_X)
 
     ipt = tanh_X / (2.0 * maxval) + 0.5 # [0,1]
 
+    max_X = tf.reduce_max(X)
+    min_X = tf.reduce_min(X)
+
     # quantize
     @tf.custom_gradient
     def identity(X):
-        X = 2 * tf.round( tf.clip_by_value(ipt * fsr, 0, fsr-1) ) / fsr - 1
+        X = 2 * tf.round( tf.clip_by_value(ipt * fsr, 0, fsr-1) ) / fsr - 1     # [-1,1]
+        X_q = X * (max_X - min_X) / 2 + (max_X + min_X) / 2     # dequantize
 
-        return X, lambda dy : dy
+        return X_q, lambda dy : dy
     
     @tf.custom_gradient
     def stochastic_identity(X):
         X = 2 * tf.floor( tf.clip_by_value(ipt * fsr + tf.random_uniform(X.shape[1:], 0, 1),
-                                           0, fsr) ) / fsr - 1
+                                           0, fsr-1) ) / fsr - 1
+        X_q = X * (max_X - min_X) / 2 + (max_X + min_X) / 2     # dequantize
 
-        return X, lambda dy : dy
+        return X_q, lambda dy : dy
 
     if not stochastic:
         return identity(X)
@@ -335,10 +340,11 @@ class Dense_q(Layer_q):
 
         self.Xq = weight_quantization(self.X, self.target_overflow_rate,
             self.bits, self.X_range)
-        self.Wq = weight_quantization(self.W, self.target_overflow_rate,
-            self.bits, self.W_range)
+        # self.Wq = weight_quantization(self.W, self.target_overflow_rate,
+        #     self.bits, self.W_range)
+        self.Wq = tanh_quantization(self.W, self.bits)
+
         # print_op1 = tf.print(self.W)
-        # self.Wq = tanh_quantization(self.W, self.bits)
         # print_op = tf.print(self.Wq)
 
         # print_op2 = tf.print("-----------------------------")
@@ -402,9 +408,7 @@ class Dense_q(Layer_q):
         self.eps =  tf.cast( 1/ (2 ** (self.bits - self.grad_range)), tf.float32)    # the smallest value
 
         if self.init_f == True:
-            self.init_f = False
-            # self.reminder = self.grad # buffer
-            # self.accu_value =  self.grad + 0.001 # buffer            
+            self.init_f = False   
             # self.reminder = tf.constant(0.0, shape=[self.in_units, self.units], dtype=tf.float32) # buffer
             self.accu_value =  tf.constant(0.001, shape=[self.in_units, self.units], dtype=tf.float32) # buffer
 
