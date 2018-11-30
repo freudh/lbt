@@ -122,7 +122,11 @@ class Trainer:
                 self.lr *= self.lr_decay_factor
                 self.logger.info('New training optimizer with lr=%f' % self.lr)
                 train_op = self.get_train_op()
-            elif epoch == 140:
+            elif epoch == 135:
+                self.lr *= self.lr_decay_factor
+                self.logger.info('New training optimizer with lr=%f' % self.lr)
+                train_op = self.get_train_op()
+            elif epoch == 160:
                 self.lr *= self.lr_decay_factor
                 self.logger.info('New training optimizer with lr=%f' % self.lr)
                 train_op = self.get_train_op()

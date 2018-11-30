@@ -56,31 +56,31 @@ def tanh_quantization(X, bits, stochastic=False):
     if bits == 32:
         return X
     
-    fsr = 2 ** bits - 1
+    fsr = float(2 ** bits - 1)
 
     tanh_X = tf.tanh(X)
     maxval = tf.reduce_max(tf.abs(tanh_X))   # max(tanh_X)
 
-    ipt = tanh_X / (2.0 * maxval) + 0.5 # [0,1]
+    ipt = tanh_X / maxval * 0.5 + 0.5 # [0,1]
 
-    max_X = tf.reduce_max(X)
-    min_X = tf.reduce_min(X)
+    # max_X = tf.reduce_max(X)
+    # min_X = tf.reduce_min(X)
 
     # quantize
     @tf.custom_gradient
     def identity(X):
-        X = 2 * tf.round( tf.clip_by_value(ipt * fsr, 0, fsr-1) ) / fsr - 1     # [-1,1]
-        X_q = X * (max_X - min_X) / 2 + (max_X + min_X) / 2     # dequantize
+        X = 2 * tf.round(ipt * fsr) / fsr - 1     # [-1,1]
+        # X_q = X * (max_X - min_X) / 2 + (max_X + min_X) / 2     # dequantize
 
-        return X_q, lambda dy : dy
+        return X, lambda dy : dy
     
     @tf.custom_gradient
     def stochastic_identity(X):
         X = 2 * tf.floor( tf.clip_by_value(ipt * fsr + tf.random_uniform(X.shape[1:], 0, 1),
                                            0, fsr-1) ) / fsr - 1
-        X_q = X * (max_X - min_X) / 2 + (max_X + min_X) / 2     # dequantize
+        # X_q = X * (max_X - min_X) / 2 + (max_X + min_X) / 2     # dequantize
 
-        return X_q, lambda dy : dy
+        return X, lambda dy : dy
 
     if not stochastic:
         return identity(X)
@@ -340,9 +340,9 @@ class Dense_q(Layer_q):
 
         self.Xq = weight_quantization(self.X, self.target_overflow_rate,
             self.bits, self.X_range)
-        # self.Wq = weight_quantization(self.W, self.target_overflow_rate,
-        #     self.bits, self.W_range)
-        self.Wq = tanh_quantization(self.W, self.bits)
+        self.Wq = weight_quantization(self.W, self.target_overflow_rate,
+            self.bits, self.W_range)
+        # self.Wq = tanh_quantization(self.W, self.bits)
 
         # print_op1 = tf.print(self.W)
         # print_op = tf.print(self.Wq)
