@@ -1,92 +1,153 @@
 import tensorflow as tf
 import numpy as np
 
+# def weight_quantization(X, target_overflow_rate, bits, integer_bits, stochastic=False):
+#     '''
+#     Quantize input tensor according to the DFXP format.
 
-def weight_quantization(X, target_overflow_rate, bits, integer_bits, stochastic=False):
+#     When bits == 32, output the original tensor.
+#     The update_range op is added to the 'update_range' collection.
+
+#     Args:
+#         X: input tensor
+#         target_overflow_rate: target overflow rate
+#         bits: total number of bits for DFXP, including sign bit
+#         integer bits: number of integer bits for DFXP, excluding sign bit
+#         stochastic: stochastic rounding flag
+
+#     Returns:
+#         Quantized tensor
+#     '''
+#     assert 1 <= bits <= 32, 'invalid value for bits: %d' % bits
+#     if bits == 32:
+#         return X
+
+#     @tf.custom_gradient
+#     def identity(X):
+#         multiplier = tf.cast(2 ** (bits - integer_bits - 1), tf.float32)
+#         limit = tf.cast(2 ** (bits - 1), tf.float32)
+#         X = tf.round(tf.clip_by_value(X * multiplier, tf.negative(limit), limit-1)) / multiplier
+#         return X, lambda dy : dy
+
+#     @tf.custom_gradient
+#     def stochastic_identity(X):
+#         multiplier = tf.cast(2 ** (bits - integer_bits - 1), tf.float32)
+#         limit = tf.cast(2 ** (bits - 1), tf.float32)
+#         X = tf.floor(tf.clip_by_value(X * multiplier + tf.random_uniform(X.shape[1:], 0, 1),
+#             tf.negative(limit), limit-1)) / multiplier
+#         return X, lambda dy : dy
+
+#     tf.add_to_collection('update_range', update_range(
+#         X, target_overflow_rate, bits, integer_bits))
+#     if not stochastic:
+#         return identity(X)
+#     else:
+#         return stochastic_identity(X)
+
+'''
+Using DoReFa Quantization Method.
+'''
+def weight_quantization(W, bits, stochastic=False):
     '''
-    Quantize input tensor according to the DFXP format.
-
-    When bits == 32, output the original tensor.
-    The update_range op is added to the 'update_range' collection.
-
-    Args:
-        X: input tensor
-        target_overflow_rate: target overflow rate
-        bits: total number of bits for DFXP, including sign bit
-        integer bits: number of integer bits for DFXP, excluding sign bit
-        stochastic: stochastic rounding flag
+    Quantize input weight tensor according to DoReFa
 
     Returns:
         Quantized tensor
     '''
     assert 1 <= bits <= 32, 'invalid value for bits: %d' % bits
     if bits == 32:
-        return X
-
-    @tf.custom_gradient
-    def identity(X):
-        multiplier = tf.cast(2 ** (bits - integer_bits - 1), tf.float32)
-        limit = tf.cast(2 ** (bits - 1), tf.float32)
-        X = tf.round(tf.clip_by_value(X * multiplier, tf.negative(limit), limit-1)) / multiplier
-        return X, lambda dy : dy
-
-    @tf.custom_gradient
-    def stochastic_identity(X):
-        multiplier = tf.cast(2 ** (bits - integer_bits - 1), tf.float32)
-        limit = tf.cast(2 ** (bits - 1), tf.float32)
-        X = tf.floor(tf.clip_by_value(X * multiplier + tf.random_uniform(X.shape[1:], 0, 1),
-            tf.negative(limit), limit-1)) / multiplier
-        return X, lambda dy : dy
-
-    tf.add_to_collection('update_range', update_range(
-        X, target_overflow_rate, bits, integer_bits))
-    if not stochastic:
-        return identity(X)
-    else:
-        return stochastic_identity(X)
-
-def tanh_quantization(X, bits, stochastic=False):
-    '''
-    Quantize input weight tensor according to the DFXP format.(DoReFa)
-
-    Returns:
-        Quantized tensor
-    '''
-    assert 1 <= bits <= 32, 'invalid value for bits: %d' % bits
-    if bits == 32:
-        return X
+        return W
     
     fsr = float(2 ** bits - 1)
 
-    tanh_X = tf.tanh(X)
-    maxval = tf.reduce_max(tf.abs(tanh_X))   # max(tanh_X)
+    tanh_W = tf.tanh(W)
+    maxval = tf.reduce_max(tf.abs(tanh_W))   # max(tanh_W)
 
-    ipt = tanh_X / maxval * 0.5 + 0.5 # [0,1]
+    ipt = tanh_W / maxval * 0.5 + 0.5 # [0,1]
 
-    max_X = tf.reduce_max(X)
-    min_X = tf.reduce_min(X)
+    # max_W = tf.reduce_max(W)
+    # min_W = tf.reduce_min(W)
 
     # quantize
     @tf.custom_gradient
-    def identity(X):
-        X = 2 * tf.round(ipt * fsr) / fsr - 1     # [-1,1]
-        X_q = X * (max_X - min_X) / 2 + (max_X + min_X) / 2     # dequantize
+    def identity(W):
+        W = 2 * tf.round(ipt * fsr) / fsr - 1     # [-1,1]
+        # W_q = W * (max_W - min_W) / 2 + (max_W + min_W) / 2     # dequantize
 
-        return X_q, lambda dy : dy
+        return W, lambda dy : dy
     
     @tf.custom_gradient
-    def stochastic_identity(X):
-        X = 2 * tf.floor( tf.clip_by_value(ipt * fsr + tf.random_uniform(X.shape[1:], 0, 1),
-                                           0, fsr-1) ) / fsr - 1
-        X_q = X * (max_X - min_X) / 2 + (max_X + min_X) / 2     # dequantize
+    def stochastic_identity(W):
+        W = 2 * tf.floor( tf.clip_by_value(ipt * fsr + tf.random_uniform(W.shape[1:], 0, 1),
+                                           0, fsr) ) / fsr - 1
+        # W_q = W * (max_W - min_W) / 2 + (max_W + min_W) / 2     # dequantize
 
-        return X_q, lambda dy : dy
+        return W, lambda dy : dy
 
     if not stochastic:
-        return identity(X)
+        return identity(W)
     else:
-        return stochastic_identity(X)
+        return stochastic_identity(W)
 
+
+def activation_quantization(A, bits, stochastic=False):
+    '''
+    Quantize input activation tensor according to DoReFa
+
+    Returns:
+        Quantized tensor
+    '''
+    assert 1 <= bits <= 32, 'invalid value for bits: %d' % bits
+    if bits == 32:
+        return A
+
+    fsr = float(2 ** bits - 1)
+    eps = 1e-8
+
+    maxval = tf.reduce_max(A)
+    minval = tf.reduce_min(A)
+    scale = (maxval - minval) / fsr + eps
+
+    # quantize
+    @tf.custom_gradient
+    def identity(A):
+        A = tf.round(tf.clip_by_value((A - minval) / scale, 0, fsr)) * scale + minval
+
+        return A, lambda dy : dy
+
+    return identity(A)
+
+def grad_quantization(G, bits, stochastic=False):
+    '''
+    Quantize input gradient tensor according to DoReFa
+
+    Returns:
+        Quantized tensor
+    '''
+    assert 1 <= bits <= 32, 'invalid value for bits: %d' % bits
+    if bits == 32:
+        return G
+
+    fsr = float(2 ** bits - 1)
+    eps = 1e-8
+
+    maxval_pre = tf.reduce_max(tf.abs(G))
+    maxval_abs = tf.cond(
+                    tf.greater(maxval_pre, 0.0),
+                    lambda: maxval_pre,
+                    lambda: eps,
+    )
+    ipt = G / maxval_abs * 0.5 + 0.5
+
+    # quantize
+    @tf.custom_gradient
+    def identity(G):
+        G = 2 * maxval_abs * (tf.floor( tf.clip_by_value(ipt * fsr + tf.random_uniform(G.shape[1:], 0, 1),
+                                           0, fsr) ) / fsr - 0.5)
+
+        return G, lambda dy : dy
+
+    return identity(G)
 
 def overflow_rate(X, bits, integer_bits):
     '''
@@ -232,24 +293,25 @@ class Conv2d_q(Layer_q):
                 tf.summary.scalar('b_range', self.b_range)
                 tf.summary.scalar('b_mean', tf.reduce_mean(self.b))
 
-        self.Xq = weight_quantization(self.X, self.target_overflow_rate,
-            self.bits, self.X_range)
+        # self.Xq = weight_quantization(self.X, self.target_overflow_rate,
+        #     self.bits, self.X_range)
         # self.Wq = weight_quantization(self.W, self.target_overflow_rate,
         #     self.bits, self.W_range)
-        self.Wq = tanh_quantization(self.W, self.bits)
+        self.Xq = activation_quantization(self.X, self.bits)
+        self.Wq = weight_quantization(self.W, self.bits)
         self.y = tf.nn.conv2d(self.Xq, self.Wq, self.strides, self.padding)
 
         if self.use_bias:
-            self.bq = weight_quantization(self.b, self.target_overflow_rate,
-                self.bits, self.b_range)
+            self.bq = activation_quantization(self.b, self.bits)
             self.y = self.y + self.bq
 
         return self.y
 
 
     def backward(self, grad, stochastic):
-        self.gradq = weight_quantization(grad, self.target_overflow_rate,
-            self.bits, self.grad_range, stochastic=stochastic)
+        # self.gradq = weight_quantization(grad, self.target_overflow_rate,
+        #     self.bits, self.grad_range, stochastic=stochastic)
+        self.gradq = grad_quantization(grad, self.bits)
         self.dW = tf.gradients(self.y, self.W, self.gradq)[0] + 2 * self.weight_decay * self.W
         if self.use_bias:
             self.db = tf.gradients(self.y, self.b, self.gradq)[0]
@@ -338,11 +400,12 @@ class Dense_q(Layer_q):
                 tf.summary.scalar('b_range', self.b_range)
                 tf.summary.scalar('b_mean', tf.reduce_mean(self.b))
 
-        self.Xq = weight_quantization(self.X, self.target_overflow_rate,
-            self.bits, self.X_range)
+        # self.Xq = weight_quantization(self.X, self.target_overflow_rate,
+        #     self.bits, self.X_range)
         # self.Wq = weight_quantization(self.W, self.target_overflow_rate,
         #     self.bits, self.W_range)
-        self.Wq = tanh_quantization(self.W, self.bits)
+        self.Xq = activation_quantization(self.X, self.bits)
+        self.Wq = weight_quantization(self.W, self.bits)
 
         # print_op1 = tf.print(self.W)
         # print_op = tf.print(self.Wq)
@@ -351,8 +414,7 @@ class Dense_q(Layer_q):
         self.y = tf.matmul(self.Xq, self.Wq)
 
         if self.use_bias:
-            self.bq = weight_quantization(self.b, self.target_overflow_rate,
-                self.bits, self.b_range)
+            self.bq = activation_quantization(self.b, self.bits)
             self.y = self.y + self.bq
 
         return self.y
@@ -412,10 +474,11 @@ class Dense_q(Layer_q):
             # self.reminder = tf.constant(0.0, shape=[self.in_units, self.units], dtype=tf.float32) # buffer
             self.accu_value =  tf.constant(0.001, shape=[self.in_units, self.units], dtype=tf.float32) # buffer
 
-        pre_dense_op = self.pre_dense_func()
+        # pre_dense_op = self.pre_dense_func()
 
-        self.gradq = weight_quantization(grad, self.target_overflow_rate,
-            self.bits, self.grad_range, stochastic=stochastic)
+        # self.gradq = weight_quantization(grad, self.target_overflow_rate,
+        #     self.bits, self.grad_range, stochastic=stochastic)
+        self.gradq = grad_quantization(self.grad, self.bits)
         self.dW = tf.gradients(self.y, self.W, self.gradq)[0] + 2 * self.weight_decay * self.W
         if self.use_bias:
             self.db = tf.gradients(self.y, self.b, self.gradq)[0]
@@ -504,8 +567,9 @@ class Normalization_q(Layer_q):
 
             tf.summary.scalar('X_mean', tf.reduce_mean(self.X))
 
-        self.Xq = weight_quantization(self.X, self.target_overflow_rate,
-            self.bits, self.X_range)
+        # self.Xq = weight_quantization(self.X, self.target_overflow_rate,
+        #     self.bits, self.X_range)
+        self.Xq = activation_quantization(self.X, self.bits)
 
         rank = X._rank()
         self.X_mean_batch, self.X_var_batch = tf.nn.moments(self.Xq, axes=list(range(rank-1)))
@@ -541,8 +605,9 @@ class Normalization_q(Layer_q):
         return self.y
 
     def backward(self, grad, stochastic):
-        self.gradq = weight_quantization(grad, self.target_overflow_rate,
-            self.bits, self.grad_range, stochastic=stochastic)
+        # self.gradq = weight_quantization(grad, self.target_overflow_rate,
+        #     self.bits, self.grad_range, stochastic=stochastic)
+        self.gradq = grad_quantization(grad, self.bits)
         return tf.gradients(self.y, self.X, self.gradq)[0]
 
 
@@ -597,18 +662,22 @@ class Rescale_q(Layer_q):
             tf.summary.scalar('b_mean', tf.reduce_mean(self.beta))
             tf.summary.scalar('X_mean', tf.reduce_mean(self.X))
 
-        self.Xq = weight_quantization(self.X, self.target_overflow_rate,
-            self.bits, self.X_range)
-        self.gq = weight_quantization(self.gamma, self.target_overflow_rate,
-            self.bits, self.g_range)
-        self.bq = weight_quantization(self.beta, self.target_overflow_rate,
-            self.bits, self.b_range)
+        # self.Xq = weight_quantization(self.X, self.target_overflow_rate,
+        #     self.bits, self.X_range)
+        self.Xq = activation_quantization(self.X, self.bits)
+        self.gq = activation_quantization(self.gamma, self.bits)
+        self.bq = activation_quantization(self.beta, self.bits)
+        # self.gq = weight_quantization(self.gamma, self.target_overflow_rate,
+        #     self.bits, self.g_range)
+        # self.bq = weight_quantization(self.beta, self.target_overflow_rate,
+        #     self.bits, self.b_range)
         self.y = self.Xq * self.gq + self.bq
         return self.y
 
     def backward(self, grad, stochastic):
-        self.gradq = weight_quantization(grad, self.target_overflow_rate,
-            self.bits, self.grad_range, stochastic=stochastic)
+        # self.gradq = weight_quantization(grad, self.target_overflow_rate,
+        #     self.bits, self.grad_range, stochastic=stochastic)
+        self.gradq = grad_quantization(grad, self.bits)
         self.dgamma = tf.gradients(self.y, self.gamma, self.gradq)[0] + 2 * self.weight_decay * self.gamma
         self.dbeta = tf.gradients(self.y, self.beta, self.gradq)[0]
         return tf.gradients(self.y, self.X, self.gradq)[0]
