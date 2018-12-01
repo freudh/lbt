@@ -5,7 +5,7 @@
 
 2018.11.23 Linear Quantization(acc 87.4%, ~Pure DFXP)
 
-2018.11.30 DFXP with lazy_update is already Verified, best accuracy **89.41%** (initial lr=0.002)
+2018.11.30 DFXP with lazy_update is already Verified, best accuracy **89.50%** (initial lr=0.002)
 
 ## To be verified
 
