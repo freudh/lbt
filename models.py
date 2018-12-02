@@ -403,7 +403,7 @@ class CIFAR10_Resnet(Model):
                 padding='SAME',
                 use_bias=False,
                 weight_decay=self.weight_decay,
-            ),  # the first layer, and the conv layer
+            ),
             dfxp.BatchNorm_q(
                 name='conv1-bn',
                 bits=self.bits,
