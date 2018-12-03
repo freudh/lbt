@@ -361,10 +361,11 @@ class Dense_q(Layer_q):
             # self.reminder = tf.constant(0.0, shape=[self.in_units, self.units], dtype=tf.float32) # buffer
             self.accu_value =  tf.constant(0.001, shape=[self.in_units, self.units], dtype=tf.float32) # buffer
 
-        pre_dense_op = self.pre_dense_func()
+        # pre_dense_op = self.pre_dense_func()
 
-        self.gradq = weight_quantization(grad, self.target_overflow_rate,
-            self.bits, self.grad_range, stochastic=stochastic)
+        # self.gradq = weight_quantization(grad, self.target_overflow_rate,
+        #     self.bits, self.grad_range, stochastic=stochastic)
+        
         self.dW = tf.gradients(self.y, self.W, self.gradq)[0] + 2 * self.weight_decay * self.W
         if self.use_bias:
             self.db = tf.gradients(self.y, self.b, self.gradq)[0]
