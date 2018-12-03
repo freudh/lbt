@@ -365,6 +365,7 @@ class Dense_q(Layer_q):
 
         # self.gradq = weight_quantization(grad, self.target_overflow_rate,
         #     self.bits, self.grad_range, stochastic=stochastic)
+        self.gradq = self.grad
         
         self.dW = tf.gradients(self.y, self.W, self.gradq)[0] + 2 * self.weight_decay * self.W
         if self.use_bias:
