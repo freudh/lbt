@@ -294,7 +294,7 @@ class Conv2d_q(Layer_q):
                 tf.summary.scalar('b_mean', tf.reduce_mean(self.b))
 
         # self.Xq = weight_quantization(self.X, self.target_overflow_rate,
-        #     self.bits, self.X_range)
+        #     self.bits + 1, self.X_range)
         # self.Wq = weight_quantization(self.W, self.target_overflow_rate,
         #     self.bits, self.W_range)
         self.Xq = activation_quantization(self.X, self.bits)
