@@ -395,7 +395,7 @@ class CIFAR10_Resnet(Model):
     def get_layers(self):
         self.channels = 16
         return [
-            dfxp.Conv2d_q(
+            dfxp.Conv2d_pq(
                 name='conv1',
                 bits=self.bits,
                 ksize=[3, 3, 3, 16],
