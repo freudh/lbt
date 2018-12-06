@@ -126,6 +126,7 @@ class Layer_q:
         '''
         return 'quantized layer (default identity)'
 
+
 class Conv2d_q(Layer_q):
     def __init__(self, name, bits, ksize, strides, padding, use_bias=True, weight_decay=0,
         target_overflow_rate=0, input_range=2, weight_range=2, bias_range=2, grad_range=2):
@@ -206,7 +207,6 @@ class Conv2d_q(Layer_q):
     def backward(self, grad, stochastic):
         self.gradq = weight_quantization(grad, self.target_overflow_rate,
             self.bits, self.grad_range, stochastic=stochastic)
-        # self.gradq = grad
         self.dW = tf.gradients(self.y, self.W, self.gradq)[0] + 2 * self.weight_decay * self.W
         if self.use_bias:
             self.db = tf.gradients(self.y, self.b, self.gradq)[0]
@@ -358,7 +358,7 @@ class Dense_q(Layer_q):
             self.init_f = False
             self.accu_value =  tf.constant(0.001, shape=[self.in_units, self.units], dtype=tf.float32) # buffer
 
-        pre_dense_op = self.pre_dense_func()
+        # pre_dense_op = self.pre_dense_func()
 
         self.gradq = weight_quantization(grad, self.target_overflow_rate,
             self.bits, self.grad_range, stochastic=stochastic)
@@ -379,6 +379,46 @@ class Dense_q(Layer_q):
         return '%d bits dense: %dx%d weight_decay %f' % (
             self.bits, self.W.shape[0], self.W.shape[1], self.weight_decay)
 
+# (m)
+class GradientBuffer_q(Layer_q):
+    def __init__(self, name, bits, shape, target_overflow_rate=0, grad_range=2):
+        '''
+        Gradient buffer layer.
+
+        Args:
+            name: name of the layer
+            bits: total number of bits for DFXP
+            shape: gradient shape
+        '''
+        self.name = name
+        self.bits = bits
+        self.shape = tf.constant(shape)
+        self.target_overflow_rate = target_overflow_rate
+
+
+        with tf.variable_scope(self.name):
+            self.buffer = tf.get_variable('buffer', shape,
+                initializer=tf.zeros_initializer())
+            self.grad_range = tf.get_variable('grad_range', dtype=tf.int32,
+                initializer=grad_range, trainable=False)
+
+    def backward(self, grad, stochastic):
+        self.grad = grad
+        paddings = tf.expand_dims(self.shape - tf.shape(self.grad), -1) # [rank, 1]
+        paddings = tf.concat([tf.zeros([self.grad._rank(), 1], tf.int32),
+            paddings], axis=1) # [rank, 2]
+        self.total_grad = tf.pad(self.grad, paddings) + self.buffer
+        self.gradq = weight_quantization(grad, self.target_overflow_rate,
+            self.bits, self.grad_range, stochastic=stochastic)
+
+        update_buffer_op = tf.assign(self.buffer, self.total_grad - self.gradq)
+        tf.add_to_collection(tf.GraphKeys.UPDATE_OPS, update_buffer_op)
+
+        return self.gradq[:tf.shape(self.grad)[0]]
+
+    def info(self):
+        return 'Gradient buffer'
+# (m)
 
 class Sequential_q(Layer_q):
     def __init__(self, *args):
@@ -491,7 +531,6 @@ class Normalization_q(Layer_q):
     def backward(self, grad, stochastic):
         self.gradq = weight_quantization(grad, self.target_overflow_rate,
             self.bits, self.grad_range, stochastic=stochastic)
-        # self.gradq = grad
         return tf.gradients(self.y, self.X, self.gradq)[0]
 
 
@@ -556,9 +595,11 @@ class Rescale_q(Layer_q):
         return self.y
 
     def backward(self, grad, stochastic):
+        # global print_op
+        # print_op = tf.print(tf.shape(grad))
+
         self.gradq = weight_quantization(grad, self.target_overflow_rate,
             self.bits, self.grad_range, stochastic=stochastic)
-        # self.gradq = grad
         self.dgamma = tf.gradients(self.y, self.gamma, self.gradq)[0] + 2 * self.weight_decay * self.gamma
         self.dbeta = tf.gradients(self.y, self.beta, self.gradq)[0]
         return tf.gradients(self.y, self.X, self.gradq)[0]
