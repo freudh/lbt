@@ -395,7 +395,7 @@ class CIFAR10_Resnet(Model):
     def get_layers(self):
         self.channels = 16
         return [
-            dfxp.Conv2d_q(
+            dfxp.Conv2d_pq(
                 name='conv1',
                 bits=self.bits,
                 ksize=[3, 3, 3, 16],
@@ -403,6 +403,11 @@ class CIFAR10_Resnet(Model):
                 padding='SAME',
                 use_bias=False,
                 weight_decay=self.weight_decay,
+            ),
+            dfxp.GradientBuffer_q(
+                name='grad_buffer',
+                bits=self.bits,
+                shape=[32, 32, 32, 16],
             ),
             dfxp.BatchNorm_q(
                 name='conv1-bn',
@@ -430,11 +435,11 @@ class CIFAR10_Resnet(Model):
                 use_bias=False,
                 weight_decay=self.weight_decay,
             ),
-#             dfxp.GradientBuffer_q(
-#                 name='gradient_buffer',
-#                 bits=self.bits,
-#                 shape=[32, 10], # TODO use batch size
-#             ),
+            dfxp.GradientBuffer_q(
+                name='gradient_buffer',
+                bits=self.bits,
+                shape=[32, 10], # TODO use batch size
+            ),
             # dfxp.BatchNorm_q(
             #     name='softmax-bn',
             #     bits=self.bits,
