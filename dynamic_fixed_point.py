@@ -452,7 +452,7 @@ class Dense_q(Layer_q):
             self.init_f = False
             self.accu_value =  tf.constant(0.001, shape=[self.in_units, self.units], dtype=tf.float32) # buffer
 
-        # pre_dense_op = self.pre_dense_func()
+        pre_dense_op = self.pre_dense_func()
 
         self.gradq = weight_quantization(grad, self.target_overflow_rate,
             self.bits, self.grad_range, stochastic=stochastic)
