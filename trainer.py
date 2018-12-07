@@ -78,7 +78,9 @@ class Trainer:
 
     def get_train_op(self):
         # This reset the optimizer variables after lr/momentum changes
-        optimizer = tf.train.MomentumOptimizer(learning_rate=self.lr, momentum=self.momentum)
+        # optimizer = tf.train.MomentumOptimizer(learning_rate=self.lr, momentum=self.momentum)
+        optimizer = tf.train.AdamOptimizer(learning_rate=self.lr)
+        
         train_op = optimizer.apply_gradients(self.model.grads_and_vars(), self.global_step)
         self.sess.run(tf.variables_initializer(optimizer.variables()))
         return train_op
