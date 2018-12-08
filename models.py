@@ -404,11 +404,11 @@ class CIFAR10_Resnet(Model):
                 use_bias=False,
                 weight_decay=self.weight_decay,
             ),
-            dfxp.GradientBuffer_q(
-                name='grad_buffer',
-                bits=self.bits,
-                shape=[32, 32, 32, 16],
-            ),
+            # dfxp.GradientBuffer_q(
+            #     name='grad_buffer',
+            #     bits=self.bits,
+            #     shape=[32, 32, 32, 16],
+            # ),
             dfxp.BatchNorm_q(
                 name='conv1-bn',
                 bits=self.bits,
@@ -435,11 +435,11 @@ class CIFAR10_Resnet(Model):
                 use_bias=False,
                 weight_decay=self.weight_decay,
             ),
-            dfxp.GradientBuffer_q(
-                name='gradient_buffer',
-                bits=self.bits,
-                shape=[32, 10], # TODO use batch size
-            ),
+            # dfxp.GradientBuffer_q(
+            #     name='gradient_buffer',
+            #     bits=self.bits,
+            #     shape=[32, 10], # TODO use batch size
+            # ),
             # dfxp.BatchNorm_q(
             #     name='softmax-bn',
             #     bits=self.bits,
