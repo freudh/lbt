@@ -78,8 +78,8 @@ class Trainer:
 
     def get_train_op(self):
         # This reset the optimizer variables after lr/momentum changes
-        # optimizer = tf.train.MomentumOptimizer(learning_rate=self.lr, momentum=self.momentum)
-        optimizer = tf.train.AdamOptimizer(learning_rate=self.lr)
+        optimizer = tf.train.MomentumOptimizer(learning_rate=self.lr, momentum=self.momentum)
+        # optimizer = tf.train.AdamOptimizer(learning_rate=self.lr)
         
         train_op = optimizer.apply_gradients(self.model.grads_and_vars(), self.global_step)
         self.sess.run(tf.variables_initializer(optimizer.variables()))
@@ -120,18 +120,14 @@ class Trainer:
             if epoch == 0:
                 self.logger.info('New training optimizer with lr=%f' % self.lr)
                 train_op = self.get_train_op()
-            elif epoch == 75:
+            elif epoch == 80:
                 self.lr *= self.lr_decay_factor
                 self.logger.info('New training optimizer with lr=%f' % self.lr)
                 train_op = self.get_train_op()
-            elif epoch == 120:
+            elif epoch == 135:
                 self.lr *= self.lr_decay_factor
                 self.logger.info('New training optimizer with lr=%f' % self.lr)
                 train_op = self.get_train_op()
-            elif epoch == 150:
-                self.lr *= self.lr_decay_factor
-                self.logger.info('New training optimizer with lr=%f' % self.lr)
-                train_op = self.get_train_op() 
 
             # if epoch % self.lr_decay_epoch == 0:
             #     self.logger.info('New training optimizer with lr=%f' % self.lr)
@@ -148,16 +144,16 @@ class Trainer:
                     X, y = self.sess.run(next_train_op)
                     b += 1
                     if b % 100 == 0:
-                        _, _, loss, acc, summary, step, _ = self.sess.run([train_op, self.update_range_op,
+                        _, _, loss, acc, summary, step = self.sess.run([train_op, self.update_range_op,
                             self.model.loss, self.model.accuracy, self.summary, self.global_step,
-                            dfxp.pre_dense_op,
+                            # dfxp.pre_dense_op,
                             ],
                             feed_dict={self.model.input_X: X, self.model.input_y: y})
                         self.train_writer.add_summary(summary, step)
                         self.logger.info('Batch %d loss %f acc %f' % (b, loss, acc))
                     else:
                         self.sess.run([train_op, self.update_range_op,
-                            dfxp.pre_dense_op,
+                            # dfxp.pre_dense_op,
                             # dfxp.print_op,        
                             ], feed_dict={self.model.input_X: X, self.model.input_y: y})
                 except tf.errors.OutOfRangeError:
