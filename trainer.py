@@ -128,7 +128,7 @@ class Trainer:
                 self.lr *= self.lr_decay_factor
                 self.logger.info('New training optimizer with lr=%f' % self.lr)
                 train_op = self.get_train_op()
-            elif epoch == 150:
+            elif epoch == 140:
                 self.lr *= self.lr_decay_factor
                 self.logger.info('New training optimizer with lr=%f' % self.lr)
                 train_op = self.get_train_op()
@@ -192,3 +192,4 @@ class Trainer:
         self.logger.info('Saving model')
         saver = tf.train.Saver()
         saver.save(self.sess, exp_path+'/model.ckpt')
+

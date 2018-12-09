@@ -17,7 +17,7 @@ from trainer import Trainer
 def get_exp_path():
     '''Return new experiment path.'''
     # return '/home/jmu/cysu_lbt/tmp/log/exp-{0}'.format(
-    return '/tmp/log/exp-{0}'.format(
+    return '/home/jmu/cysu_lbt/branch/tmp/log/exp-{0}'.format(
         datetime.datetime.now().strftime('%m-%d-%H:%M:%S'))
 
 
@@ -114,7 +114,7 @@ def main():
     parser.add_argument('--dropout', type=float, default=0.5, help='Dropout keep probability')
     parser.add_argument('--weight_decay', type=float, default=0.0002, help='Weight decay factor')
     # training
-    parser.add_argument('--lr', type=float, default=1e-2, help='Initial learning rate')
+    parser.add_argument('--lr', type=float, default=5e-3, help='Initial learning rate')
     parser.add_argument('--lr_decay_factor', type=float, default=0.1, help='Learning rate decay factor')
     parser.add_argument('--lr_decay_epoch', type=int, default=50, help='Learning rate decay epoch')
     parser.add_argument('--momentum', type=float, default=0.9, help='SGD momentum')
@@ -163,3 +163,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
