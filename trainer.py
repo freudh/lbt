@@ -1,6 +1,7 @@
 import numpy as np
 import tensorflow as tf
 
+import dynamic_fixed_point as dfxp
 from random import randrange
 
 
@@ -77,7 +78,7 @@ class Trainer:
 
     def get_train_op(self):
         # This reset the optimizer variables after lr/momentum changes
-        optimizer = tf.train.MomentumOptimizer(learning_rate=self.lr, momentum=self.momentum)
+        optimizer = tf.train.MomentumOptimizer(learning_rate=self.lr, momentum=self.momentum)        
         train_op = optimizer.apply_gradients(self.model.grads_and_vars(), self.global_step)
         self.sess.run(tf.variables_initializer(optimizer.variables()))
         return train_op
@@ -125,7 +126,7 @@ class Trainer:
                 self.lr *= self.lr_decay_factor
                 self.logger.info('New training optimizer with lr=%f' % self.lr)
                 train_op = self.get_train_op()
-            elif epoch == 150:
+            elif epoch == 140:
                 self.lr *= self.lr_decay_factor
                 self.logger.info('New training optimizer with lr=%f' % self.lr)
                 train_op = self.get_train_op()
@@ -146,12 +147,17 @@ class Trainer:
                     b += 1
                     if b % 100 == 0:
                         _, _, loss, acc, summary, step = self.sess.run([train_op, self.update_range_op,
-                            self.model.loss, self.model.accuracy, self.summary, self.global_step],
+                            self.model.loss, self.model.accuracy, self.summary, self.global_step,
+                            # dfxp.pre_dense_op,
+                            ],
                             feed_dict={self.model.input_X: X, self.model.input_y: y})
                         self.train_writer.add_summary(summary, step)
                         self.logger.info('Batch %d loss %f acc %f' % (b, loss, acc))
                     else:
-                        self.sess.run([train_op, self.update_range_op], feed_dict={self.model.input_X: X, self.model.input_y: y})
+                        self.sess.run([train_op, self.update_range_op,
+                            # dfxp.pre_dense_op,
+                            # dfxp.print_op,        
+                            ], feed_dict={self.model.input_X: X, self.model.input_y: y})
                 except tf.errors.OutOfRangeError:
                     break
 
@@ -184,3 +190,4 @@ class Trainer:
         self.logger.info('Saving model')
         saver = tf.train.Saver()
         saver.save(self.sess, exp_path+'/model.ckpt')
+
