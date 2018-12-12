@@ -9,6 +9,8 @@
 
 2018.12.08 Add GradBuffer to first conv layer, now best stable accuracy 89.4%(best 89.57%)
 
+2018.12.10 Using uniform distribution stochastic in grad, model converge at lr=5e-3, stable acc ~90.0%
+
 ## To be verified
 
 2018.11.28 Linear_q, Quantize grad. in Dense layer on channel axis(10 respectively)
