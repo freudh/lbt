@@ -39,10 +39,10 @@ def weight_quantization(X, target_overflow_rate, bits, integer_bits, stochastic=
 
         X_int = tf.floor(X * multiplier)
         X_round_prob = X * multiplier - X_int   # [0,1)
-        sto_Bern = tf.distributions.Bernoulli(probs=X_round_prob)   # Bernoulli Distribution
-        ans = tf.cast(X_int + sto_Bern.sample(), tf.float32)
+        sto_Bern = tf.distributions.Bernoulli(probs=X_round_prob)
+        ans = tf.cast(sto_Bern.sample(), tf.float32)
 
-        X = tf.clip_by_value(ans, tf.negative(limit), limit-1) / multiplier
+        X = tf.clip_by_value( (X_int + ans), tf.negative(limit), limit-1) / multiplier
         return X, lambda dy : dy
 
     tf.add_to_collection('update_range', update_range(
