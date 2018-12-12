@@ -1,7 +1,6 @@
 import tensorflow as tf
 import numpy as np
 
-
 def weight_quantization(X, target_overflow_rate, bits, integer_bits, stochastic=False):
     '''
     Quantize input tensor according to the DFXP format.
@@ -191,14 +190,14 @@ class Conv2d_pq(Layer_q):
                 tf.summary.scalar('b_mean', tf.reduce_mean(self.b))
 
         self.Xq = weight_quantization(self.X, self.target_overflow_rate,
-            self.bits+1, self.X_range)
+            self.bits+1, self.X_range, stochastic=True)
         self.Wq = weight_quantization(self.W, self.target_overflow_rate,
-            self.bits, self.W_range)
+            self.bits, self.W_range, stochastic=True)
         self.y = tf.nn.conv2d(self.Xq, self.Wq, self.strides, self.padding)
 
         if self.use_bias:
             self.bq = weight_quantization(self.b, self.target_overflow_rate,
-                self.bits, self.b_range)
+                self.bits, self.b_range, stochastic=True)
             self.y = self.y + self.bq
         return self.y
 
@@ -286,14 +285,14 @@ class Conv2d_q(Layer_q):
                 tf.summary.scalar('b_mean', tf.reduce_mean(self.b))
 
         self.Xq = weight_quantization(self.X, self.target_overflow_rate,
-            self.bits+1, self.X_range)
+            self.bits+1, self.X_range, stochastic=True)
         self.Wq = weight_quantization(self.W, self.target_overflow_rate,
-            self.bits, self.W_range)
+            self.bits, self.W_range, stochastic=True)
         self.y = tf.nn.conv2d(self.Xq, self.Wq, self.strides, self.padding)
 
         if self.use_bias:
             self.bq = weight_quantization(self.b, self.target_overflow_rate,
-                self.bits, self.b_range)
+                self.bits, self.b_range, stochastic=True)
             self.y = self.y + self.bq
         return self.y
 
@@ -383,14 +382,14 @@ class Dense_q(Layer_q):
                 tf.summary.scalar('b_mean', tf.reduce_mean(self.b))
 
         self.Xq = weight_quantization(self.X, self.target_overflow_rate,
-            self.bits, self.X_range)
+            self.bits, self.X_range, stochastic=True)
         self.Wq = weight_quantization(self.W, self.target_overflow_rate,
-            self.bits, self.W_range)
+            self.bits, self.W_range, stochastic=True)
         self.y = tf.matmul(self.Xq, self.Wq)
 
         if self.use_bias:
             self.bq = weight_quantization(self.b, self.target_overflow_rate,
-                self.bits, self.b_range)
+                self.bits, self.b_range, stochastic=True)
             self.y = self.y + self.bq
 
         return self.y
@@ -499,7 +498,7 @@ class GradientBuffer_q(Layer_q):
             paddings], axis=1) # [rank, 2]
         self.total_grad = tf.pad(self.grad, paddings) + self.buffer
         self.gradq = weight_quantization(self.total_grad, self.target_overflow_rate,
-            self.bits, self.grad_range, stochastic=False)
+            self.bits, self.grad_range, stochastic=True)
 
         update_buffer_op = tf.assign(self.buffer, self.total_grad - self.gradq)
         tf.add_to_collection(tf.GraphKeys.UPDATE_OPS, update_buffer_op)
@@ -583,7 +582,7 @@ class Normalization_q(Layer_q):
             tf.summary.scalar('X_mean', tf.reduce_mean(self.X))
 
         self.Xq = weight_quantization(self.X, self.target_overflow_rate,
-            self.bits, self.X_range)
+            self.bits, self.X_range, stochastic=True)
 
         rank = X._rank()
         self.X_mean_batch, self.X_var_batch = tf.nn.moments(self.Xq, axes=list(range(rank-1)))
@@ -676,11 +675,11 @@ class Rescale_q(Layer_q):
             tf.summary.scalar('X_mean', tf.reduce_mean(self.X))
 
         self.Xq = weight_quantization(self.X, self.target_overflow_rate,
-            self.bits, self.X_range)
+            self.bits, self.X_range, stochastic=True)
         self.gq = weight_quantization(self.gamma, self.target_overflow_rate,
-            self.bits, self.g_range)
+            self.bits, self.g_range, stochastic=True)
         self.bq = weight_quantization(self.beta, self.target_overflow_rate,
-            self.bits, self.b_range)
+            self.bits, self.b_range, stochastic=True)
         self.y = self.Xq * self.gq + self.bq
         return self.y
 
