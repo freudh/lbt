@@ -55,7 +55,7 @@ parser.add_argument('--lr_step_epoch', type=str, default="30.0,60.0", help='Epoc
 # tf.app.flags.DEFINE_float('lr_decay', 0.1, """Learning rate decay factor""")
 parser.add_argument('--lr_decay', type=float, default=0.1, help='Learning rate decay factor')
 # tf.app.flags.DEFINE_boolean('finetune', False, """Whether to finetune.""")
-parser.add_argument('--finetune', action='store_flase', help='Whether to finetune')
+parser.add_argument('--finetune', action='store_false', help='Whether to finetune')
 
 # Training Configuration
 # tf.app.flags.DEFINE_string('train_dir', './train', """Directory where to write log and checkpoint.""")
