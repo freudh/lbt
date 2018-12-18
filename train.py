@@ -76,7 +76,7 @@ parser.add_argument('--checkpoint_interval', type=int, default=5000, help='Numbe
 # tf.app.flags.DEFINE_float('gpu_fraction', 0.95, """The fraction of GPU memory to be allocated""")
 parser.add_argument('--gpu_fraction', type=float, default=0.95, help='The fraction of GPU memory to be allocated')
 # tf.app.flags.DEFINE_boolean('log_device_placement', False, """Whether to log device placement.""")
-parser.add_argument('--log_device_placement', action='stor_false', help='Whether to log device placement')
+parser.add_argument('--log_device_placement', action='store_false', help='Whether to log device placement')
 # tf.app.flags.DEFINE_string('basemodel', None, """Base model to load paramters""")
 parser.add_argument('--basemodel', type=str, default=None, help='Base model to load paramters')
 # tf.app.flags.DEFINE_string('checkpoint', None, """Model checkpoint to load""")
