@@ -14,77 +14,6 @@ import resnet
 import argparse
 
 
-parser = argparse.ArgumentParser(description='Resnet18')
-
-# Dataset Configuration
-# tf.app.flags.DEFINE_string('train_dataset', 'scripts/train_shuffle.txt', """Path to the ILSVRC2012 the training dataset list file""")
-parser.add_argument('--train_dataset', type=str, default='scripts/train_shuffle.txt',
-                    help='Path to the ILSVRC2012 the training dataset list file')
-# tf.app.flags.DEFINE_string('train_image_root', '/data1/common_datasets/imagenet_resized/', """Path to the root of ILSVRC2012 training images""")
-parser.add_argument('--train_image_root', type=str, default='/data1/common_datasets/imagenet_resized/',
-                    help='Path to the root of ILSVRC2012 training images')
-# tf.app.flags.DEFINE_string('val_dataset', 'scripts/val.txt', """Path to the test dataset list file""")
-parser.add_argument('--val_dataset', type=str, default='scripts/val.txt', help='Path to the test dataset list file')
-# tf.app.flags.DEFINE_string('val_image_root', '/data1/common_datasets/imagenet_resized/ILSVRC2012_val/', """Path to the root of ILSVRC2012 test images""")
-parser.add_argument('--val_image_root', type=str, default='/data1/common_datasets/imagenet_resized/ILSVRC2012_val/',
-                    help='Path to the root of ILSVRC2012 test images')
-# tf.app.flags.DEFINE_string('mean_path', './ResNet_mean_rgb.pkl', """Path to the imagenet mean""")
-parser.add_argument('--mean_path', type=str, default='./ResNet_mean_rgb.pkl', help='Path to the imagenet mean')
-# tf.app.flags.DEFINE_integer('num_classes', 1000, """Number of classes in the dataset.""")
-parser.add_argument('--num_classes', type=int, default=1000, help='Number of classes in the dataset')
-# tf.app.flags.DEFINE_integer('num_train_instance', 1281167, """Number of training images.""")
-parser.add_argument('--num_train_instance', type=int, default=1281167, help='Number of training images')
-# tf.app.flags.DEFINE_integer('num_val_instance', 50000, """Number of val images.""")
-parser.add_argument('--num_val_instance', type=int, default=50000, help='Number of val images')
-
-# Network Configuration
-# tf.app.flags.DEFINE_integer('batch_size', 256, """Number of images to process in a batch.""")
-parser.add_argument('--batch_size', type=int, default=256, help='Number of images to process in a batch')
-# tf.app.flags.DEFINE_integer('num_gpus', 1, """Number of GPUs.""")
-parser.add_argument('--num_gpus', type=int, default=1, help='Number of GPUs')
-
-# Optimization Configuration
-# tf.app.flags.DEFINE_float('l2_weight', 0.0001, """L2 loss weight applied all the weights""")
-parser.add_argument('--l2_weight', type=float, default=0.0001, help='L2 loss weight applied all the weights')
-# tf.app.flags.DEFINE_float('momentum', 0.9, """The momentum of MomentumOptimizer""")
-parser.add_argument('--momentum', type=float, default=0.9, help='The momentum of MomentumOptimizer')
-# tf.app.flags.DEFINE_float('initial_lr', 0.1, """Initial learning rate""")
-parser.add_argument('--initial_lr', type=float, default=0.1, help='Initial learning rate')
-# tf.app.flags.DEFINE_string('lr_step_epoch', "30.0,60.0", """Epochs after which learing rate decays""")
-parser.add_argument('--lr_step_epoch', type=str, default="30.0,60.0", help='Epochs after which learing rate decays')
-# tf.app.flags.DEFINE_float('lr_decay', 0.1, """Learning rate decay factor""")
-parser.add_argument('--lr_decay', type=float, default=0.1, help='Learning rate decay factor')
-# tf.app.flags.DEFINE_boolean('finetune', False, """Whether to finetune.""")
-parser.add_argument('--finetune', action='store_false', help='Whether to finetune')
-
-# Training Configuration
-# tf.app.flags.DEFINE_string('train_dir', './train', """Directory where to write log and checkpoint.""")
-parser.add_argument('--train_dir', type=str, default='./train', help='Directory where to write log and checkpoint')
-# (added)
-# tf.app.flags.DEFINE_integer('init_step', 0, """Change if training from an existing model""")
-parser.add_argument('--init_step', type=int, default=0, help='Change if training from an existing model')
-# tf.app.flags.DEFINE_integer('max_steps', 500000, """Number of batches to run.""")
-parser.add_argument('--max_steps', type=int, default=500000, help='Number of steps to run')
-# tf.app.flags.DEFINE_integer('display', 100, """Number of iterations to display training info.""")
-parser.add_argument('--display', type=int, default=100, help='Number of iterations to display training info')
-# tf.app.flags.DEFINE_integer('val_interval', 1000, """Number of iterations to run a val""")
-parser.add_argument('--val_interval', type=int, default=1000, help='Number of iterations to run a val')
-# tf.app.flags.DEFINE_integer('val_iter', 100, """Number of iterations during a val""")
-parser.add_argument('--val_iter', type=int, default=100, help='Number of iterations during a val')
-# tf.app.flags.DEFINE_integer('checkpoint_interval', 10000, """Number of iterations to save parameters as a checkpoint""")
-parser.add_argument('--checkpoint_interval', type=int, default=5000, help='Number of iterations to save parameters as a checkpoint')
-# tf.app.flags.DEFINE_float('gpu_fraction', 0.95, """The fraction of GPU memory to be allocated""")
-parser.add_argument('--gpu_fraction', type=float, default=0.95, help='The fraction of GPU memory to be allocated')
-# tf.app.flags.DEFINE_boolean('log_device_placement', False, """Whether to log device placement.""")
-parser.add_argument('--log_device_placement', action='store_false', help='Whether to log device placement')
-# tf.app.flags.DEFINE_string('basemodel', None, """Base model to load paramters""")
-parser.add_argument('--basemodel', type=str, default=None, help='Base model to load paramters')
-# tf.app.flags.DEFINE_string('checkpoint', None, """Model checkpoint to load""")
-parser.add_argument('--checkpoint', type=str, default=None, help='Model checkpoint to load')
-
-# FLAGS = tf.app.flags.FLAGS
-params = parser.parse_args()
-
 def get_lr(initial_lr, lr_decay, lr_decay_steps, global_step):
     lr = initial_lr
     for s in lr_decay_steps:
@@ -94,6 +23,77 @@ def get_lr(initial_lr, lr_decay, lr_decay_steps, global_step):
 
 
 def train():
+    parser = argparse.ArgumentParser(description='Resnet18')
+
+    # Dataset Configuration
+    # tf.app.flags.DEFINE_string('train_dataset', 'scripts/train_shuffle.txt', """Path to the ILSVRC2012 the training dataset list file""")
+    parser.add_argument('--train_dataset', type=str, default='scripts/train_shuffle.txt',
+                        help='Path to the ILSVRC2012 the training dataset list file')
+    # tf.app.flags.DEFINE_string('train_image_root', '/data1/common_datasets/imagenet_resized/', """Path to the root of ILSVRC2012 training images""")
+    parser.add_argument('--train_image_root', type=str, default='/data1/common_datasets/imagenet_resized/',
+                        help='Path to the root of ILSVRC2012 training images')
+    # tf.app.flags.DEFINE_string('val_dataset', 'scripts/val.txt', """Path to the test dataset list file""")
+    parser.add_argument('--val_dataset', type=str, default='scripts/val.txt', help='Path to the test dataset list file')
+    # tf.app.flags.DEFINE_string('val_image_root', '/data1/common_datasets/imagenet_resized/ILSVRC2012_val/', """Path to the root of ILSVRC2012 test images""")
+    parser.add_argument('--val_image_root', type=str, default='/data1/common_datasets/imagenet_resized/ILSVRC2012_val/',
+                        help='Path to the root of ILSVRC2012 test images')
+    # tf.app.flags.DEFINE_string('mean_path', './ResNet_mean_rgb.pkl', """Path to the imagenet mean""")
+    parser.add_argument('--mean_path', type=str, default='./ResNet_mean_rgb.pkl', help='Path to the imagenet mean')
+    # tf.app.flags.DEFINE_integer('num_classes', 1000, """Number of classes in the dataset.""")
+    parser.add_argument('--num_classes', type=int, default=1000, help='Number of classes in the dataset')
+    # tf.app.flags.DEFINE_integer('num_train_instance', 1281167, """Number of training images.""")
+    parser.add_argument('--num_train_instance', type=int, default=1281167, help='Number of training images')
+    # tf.app.flags.DEFINE_integer('num_val_instance', 50000, """Number of val images.""")
+    parser.add_argument('--num_val_instance', type=int, default=50000, help='Number of val images')
+
+    # Network Configuration
+    # tf.app.flags.DEFINE_integer('batch_size', 256, """Number of images to process in a batch.""")
+    parser.add_argument('--batch_size', type=int, default=256, help='Number of images to process in a batch')
+    # tf.app.flags.DEFINE_integer('num_gpus', 1, """Number of GPUs.""")
+    parser.add_argument('--num_gpus', type=int, default=1, help='Number of GPUs')
+
+    # Optimization Configuration
+    # tf.app.flags.DEFINE_float('l2_weight', 0.0001, """L2 loss weight applied all the weights""")
+    parser.add_argument('--l2_weight', type=float, default=0.0001, help='L2 loss weight applied all the weights')
+    # tf.app.flags.DEFINE_float('momentum', 0.9, """The momentum of MomentumOptimizer""")
+    parser.add_argument('--momentum', type=float, default=0.9, help='The momentum of MomentumOptimizer')
+    # tf.app.flags.DEFINE_float('initial_lr', 0.1, """Initial learning rate""")
+    parser.add_argument('--initial_lr', type=float, default=0.1, help='Initial learning rate')
+    # tf.app.flags.DEFINE_string('lr_step_epoch', "30.0,60.0", """Epochs after which learing rate decays""")
+    parser.add_argument('--lr_step_epoch', type=str, default="30.0,60.0", help='Epochs after which learing rate decays')
+    # tf.app.flags.DEFINE_float('lr_decay', 0.1, """Learning rate decay factor""")
+    parser.add_argument('--lr_decay', type=float, default=0.1, help='Learning rate decay factor')
+    # tf.app.flags.DEFINE_boolean('finetune', False, """Whether to finetune.""")
+    parser.add_argument('--finetune', type=bool, default=False, help='Whether to finetune')
+
+    # Training Configuration
+    # tf.app.flags.DEFINE_string('train_dir', './train', """Directory where to write log and checkpoint.""")
+    parser.add_argument('--train_dir', type=str, default='./train', help='Directory where to write log and checkpoint')
+    # (added)
+    # tf.app.flags.DEFINE_integer('init_step', 0, """Change if training from an existing model""")
+    parser.add_argument('--init_step', type=int, default=0, help='Change if training from an existing model')
+    # tf.app.flags.DEFINE_integer('max_steps', 500000, """Number of batches to run.""")
+    parser.add_argument('--max_steps', type=int, default=500000, help='Number of steps to run')
+    # tf.app.flags.DEFINE_integer('display', 100, """Number of iterations to display training info.""")
+    parser.add_argument('--display', type=int, default=100, help='Number of iterations to display training info')
+    # tf.app.flags.DEFINE_integer('val_interval', 1000, """Number of iterations to run a val""")
+    parser.add_argument('--val_interval', type=int, default=1000, help='Number of iterations to run a val')
+    # tf.app.flags.DEFINE_integer('val_iter', 100, """Number of iterations during a val""")
+    parser.add_argument('--val_iter', type=int, default=100, help='Number of iterations during a val')
+    # tf.app.flags.DEFINE_integer('checkpoint_interval', 10000, """Number of iterations to save parameters as a checkpoint""")
+    parser.add_argument('--checkpoint_interval', type=int, default=5000, help='Number of iterations to save parameters as a checkpoint')
+    # tf.app.flags.DEFINE_float('gpu_fraction', 0.95, """The fraction of GPU memory to be allocated""")
+    parser.add_argument('--gpu_fraction', type=float, default=0.95, help='The fraction of GPU memory to be allocated')
+    # tf.app.flags.DEFINE_boolean('log_device_placement', False, """Whether to log device placement.""")
+    parser.add_argument('--log_device_placement', tyoe=bool, default=False, help='Whether to log device placement')
+    # tf.app.flags.DEFINE_string('basemodel', None, """Base model to load paramters""")
+    parser.add_argument('--basemodel', type=str, default=None, help='Base model to load paramters')
+    # tf.app.flags.DEFINE_string('checkpoint', None, """Model checkpoint to load""")
+    parser.add_argument('--checkpoint', type=str, default=None, help='Model checkpoint to load')
+
+    # FLAGS = tf.app.flags.FLAGS
+    params = parser.parse_args()
+
     print('[Dataset Configuration]')
     print('\tImageNet training root: %s' % params.train_image_root)
     print('\tImageNet training list: %s' % params.train_dataset)
