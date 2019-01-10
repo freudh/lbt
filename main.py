@@ -16,8 +16,7 @@ from trainer import Trainer
 
 def get_exp_path():
     '''Return new experiment path.'''
-    # return '/home/jmu/cysu_lbt/tmp/log/exp-{0}'.format(
-    return '/home/jmu/cysu_lbt/branch/tmp/log/exp-{0}'.format(
+    return 'log/exp-{0}'.format(
         datetime.datetime.now().strftime('%m-%d-%H:%M:%S'))
 
 
@@ -26,8 +25,7 @@ def get_logger(path):
     logger = logging.getLogger(__name__)
     logger.setLevel(logging.DEBUG)
 
-    formatter = logging.Formatter('%(asctime)s - %(name)s - '
-                                  '%(levelname)s - %(message)s')
+    formatter = logging.Formatter('%(asctime)s - %(message)s')
 
     # stderr log
     handler = logging.StreamHandler(sys.stderr)
@@ -74,6 +72,17 @@ def load_data(dataset):
         X_train /= 128
         X_test /= 128
 
+    elif dataset == 'ImageNet':
+        (X_train, y_train), (X_test, y_test) = (
+            ('data/train.txt', '/home/jmu/ImageNet/ILSVRC2012/raw-data/imagenet-data/train/'),
+            ('data/val.txt', '/home/jmu/ImageNet/ILSVRC2012_img_val/'),
+        )
+        # # debug
+        # X_train = np.random.randn(32, 224, 224, 3)
+        # y_train = np.random.randint(1000, size=32)
+        # X_test = np.random.randn(32, 224, 224, 3)
+        # y_test = np.random.randint(1000, size=32)
+
     else:
         assert False, 'Invalid value for `dataset`: %s' % dataset
 
@@ -97,10 +106,24 @@ def get_model_and_dataset(params):
         Model, dataset = models.CIFAR10_Resnet44, 'CIFAR10'
     elif params.model == 'CIFAR10_Resnet56':
         Model, dataset = models.CIFAR10_Resnet56, 'CIFAR10'
+    elif params.model == 'CIFAR10_Simple':
+        Model, dataset = models.CIFAR10_Simple, 'CIFAR10'
+    elif params.model == 'ImageNet_Resnet18':
+        Model, dataset = models.ImageNet_Resnet18, 'ImageNet'
+    elif params.model == 'ImageNet_Resnet34':
+        Model, dataset = models.ImageNet_Resnet34, 'ImageNet'
+    elif params.model == 'ImageNet_Resnet50':
+        Model, dataset = models.ImageNet_Resnet50, 'ImageNet'
+    elif params.model == 'ImageNet_Resnet101':
+        Model, dataset = models.ImageNet_Resnet101, 'ImageNet'
+    elif params.model == 'ImageNet_Resnet152':
+        Model, dataset = models.ImageNet_Resnet152, 'ImageNet'
+    elif params.model == 'ImageNet_Resnet200':
+        Model, dataset = models.ImageNet_Resnet200, 'ImageNet'
     else:
         assert False, 'Invalid value for `model`: %s' % params.model
 
-    return Model(params.bits, params.dropout, params.weight_decay, params.stochastic), load_data(dataset)
+    return Model, load_data(dataset), dataset
 
 
 def main():
@@ -109,18 +132,19 @@ def main():
     parser.add_argument('--exp_path', type=str, default=None,
                         help='Experiment path')
     # model architecture
-    parser.add_argument('--model', type=str, default='CIFAR10_Resnet20', help='Experiment model')
+    parser.add_argument('--model', type=str, default='CIFAR10_VGG', help='Experiment model')
     parser.add_argument('--bits', type=int, default=8, help='DFXP bitwidth')
     parser.add_argument('--dropout', type=float, default=0.5, help='Dropout keep probability')
-    parser.add_argument('--weight_decay', type=float, default=0.0002, help='Weight decay factor')
+    parser.add_argument('--weight_decay', type=float, default=0, help='Weight decay factor')
     # training
-    parser.add_argument('--lr', type=float, default=5e-3, help='Initial learning rate')
+    parser.add_argument('--lr', type=float, default=2e-3, help='Initial learning rate')
     parser.add_argument('--lr_decay_factor', type=float, default=0.1, help='Learning rate decay factor')
     parser.add_argument('--lr_decay_epoch', type=int, default=50, help='Learning rate decay epoch')
     parser.add_argument('--momentum', type=float, default=0.9, help='SGD momentum')
     parser.add_argument('--batch_size', type=int, default=32, help='Batch size')
-    parser.add_argument('--n_epoch', type=int, default=160, help='Number of training epoch')
+    parser.add_argument('--n_epoch', type=int, default=50, help='Number of training epoch')
     parser.add_argument('--stochastic', action='store_true', help='Use stochastic quantization in backward pass')
+    parser.add_argument('--n_gpu', type=int, default=1, help='Number of GPUs')
     params = parser.parse_args()
 
     # experiment path
@@ -136,26 +160,19 @@ def main():
         for k, v in sorted(dict(vars(params)).items())))
 
     # get model and dataset
-    model, dataset = get_model_and_dataset(params)
+    model, dataset, dataset_name = get_model_and_dataset(params)
 
     # build trainer
     trainer = Trainer(
         model=model,
         dataset=dataset,
+        dataset_name=dataset_name,
         logger=logger,
-        logdir=params.exp_path,
-        lr=params.lr,
-        lr_decay_factor=params.lr_decay_factor,
-        lr_decay_epoch=params.lr_decay_epoch,
-        momentum=params.momentum,
-        n_epoch=params.n_epoch,
-        batch_size=params.batch_size,
+        params=params,
     )
 
     # training
-    trainer.init_model()
     trainer.train()
-    trainer.save_model(params.exp_path)
 
     # end
     logger.info('End of experiment')
@@ -163,4 +180,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-

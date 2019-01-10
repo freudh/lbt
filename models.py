@@ -5,38 +5,23 @@ import dynamic_fixed_point as dfxp
 
 
 class Model:
-    def __init__(self, bits, input_shape, dropout, weight_decay, stochastic):
+    def __init__(self, bits, input_shape, dropout, weight_decay, stochastic, training):
         self.bits = bits
-        self.input_X = tf.placeholder(tf.float32, input_shape)
-        self.input_y = tf.placeholder(tf.int32, [None])
-
-        self.training = tf.Variable(True, tf.bool)
-        self.set_training = tf.assign(self.training, True)
-        self.set_testing = tf.assign(self.training, False)
         self.dropout = dropout
         self.weight_decay = weight_decay
         self.stochastic = stochastic
-
+        self.training = training
         self.layers = self.get_layers()
-
-        X = self.input_X
-        for layer in self.layers:
-            X = layer.forward(X)
-        self.logits = X
-
-        self.predictions = tf.argmax(self.logits, axis=1, output_type=tf.int32)
-        self.accuracy = tf.reduce_mean(tf.cast(tf.equal(
-            self.predictions, self.input_y), tf.float32))
-        self.loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
-            labels=self.input_y, logits=self.logits)
-        self.loss = tf.reduce_mean(self.loss)
-
-        with tf.name_scope('metric'):
-            tf.summary.scalar('accuracy', self.accuracy)
-            tf.summary.scalar('loss', self.loss)
 
     def get_layers(self):
         return []
+
+    def forward(self, X):
+        for layer in self.layers:
+            X = layer.forward(X)
+        logit = X
+        pred = tf.argmax(logit, axis=1, output_type=tf.int32)
+        return logit, pred
 
     def grads_and_vars(self):
         res = []
@@ -44,8 +29,15 @@ class Model:
             res += layer.grads_and_vars()
         return res
 
-    def backward(self):
-        grad = tf.gradients(self.loss, self.logits)[0]
+    # (m)
+    def steps_and_vars(self):
+        res = []
+        for layer in self.layers:
+            res += layer.steps_and_vars()
+        return res        
+    # (m)
+
+    def backward(self, grad):
         for layer in reversed(self.layers):
             grad = layer.backward(grad, self.stochastic)
         return grad
@@ -54,9 +46,59 @@ class Model:
         return '\n'.join([layer.info() for layer in self.layers])
 
 
+# class Model_:
+#     def __init__(self, bits, input_shape, dropout, weight_decay, stochastic):
+#         self.bits = bits
+#         self.input_X = tf.placeholder(tf.float32, input_shape)
+#         self.input_y = tf.placeholder(tf.int32, [None])
+
+#         self.training = tf.Variable(True, tf.bool)
+#         self.set_training = tf.assign(self.training, True)
+#         self.set_testing = tf.assign(self.training, False)
+#         self.dropout = dropout
+#         self.weight_decay = weight_decay
+#         self.stochastic = stochastic
+
+#         self.layers = self.get_layers()
+
+#         X = self.input_X
+#         for layer in self.layers:
+#             X = layer.forward(X)
+#         self.logits = X
+
+#         self.predictions = tf.argmax(self.logits, axis=1, output_type=tf.int32)
+#         self.accuracy = tf.reduce_mean(tf.cast(tf.equal(
+#             self.predictions, self.input_y), tf.float32))
+#         self.loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
+#             labels=self.input_y, logits=self.logits)
+#         self.loss = tf.reduce_mean(self.loss)
+
+#         with tf.name_scope('metric'):
+#             tf.summary.scalar('accuracy', self.accuracy)
+#             tf.summary.scalar('loss', self.loss)
+
+#     def get_layers(self):
+#         return []
+
+#     def grads_and_vars(self):
+#         res = []
+#         for layer in self.layers:
+#             res += layer.grads_and_vars()
+#         return res
+
+#     def backward(self):
+#         grad = tf.gradients(self.loss, self.logits)[0]
+#         for layer in reversed(self.layers):
+#             grad = layer.backward(grad, self.stochastic)
+#         return grad
+
+#     def info(self):
+#         return '\n'.join([layer.info() for layer in self.layers])
+
+
 class PI_MNIST_Model(Model):
-    def __init__(self, bits, dropout=0.5, weight_decay=0, stochastic=False):
-        super().__init__(bits, [None, 784], dropout, weight_decay, stochastic)
+    def __init__(self, bits, dropout=0.5, weight_decay=0, stochastic=False, training=True):
+        super().__init__(bits, [None, 784], dropout, weight_decay, stochastic, training)
 
     def get_layers(self):
         return [
@@ -89,8 +131,8 @@ class PI_MNIST_Model(Model):
 
 
 class MNIST_Model(Model):
-    def __init__(self, bits, dropout=0.5, weight_decay=0, stochastic=False):
-        super().__init__(bits, [None, 28, 28, 1], dropout, weight_decay, stochastic)
+    def __init__(self, bits, dropout=0.5, weight_decay=0, stochastic=False, training=True):
+        super().__init__(bits, [None, 28, 28, 1], dropout, weight_decay, stochastic, training)
 
     def get_layers(self):
         return [
@@ -153,8 +195,8 @@ class MNIST_Model(Model):
 
 
 class CIFAR10_Model(Model):
-    def __init__(self, bits, dropout=0.5, weight_decay=0, stochastic=False):
-        super().__init__(bits, [None, 32, 32, 3], dropout, weight_decay, stochastic)
+    def __init__(self, bits, dropout=0.5, weight_decay=0, stochastic=False, training=True):
+        super().__init__(bits, [None, 32, 32, 3], dropout, weight_decay, stochastic, training)
 
     def get_layers(self):
         return [
@@ -234,9 +276,26 @@ class CIFAR10_Model(Model):
         ]
 
 
+class CIFAR10_Simple(Model):
+    def __init__(self, bits, dropout=0.5, weight_decay=0, stochastic=False, training=True):
+        super().__init__(bits, [None, 32, 32, 3], dropout, weight_decay, stochastic, training)
+
+    def get_layers(self):
+        return [
+            dfxp.Flatten_q(32*32*3),
+            dfxp.Dense_q(
+                name='softmax',
+                bits=self.bits,
+                in_units=32*32*3,
+                units=10,
+                weight_decay=self.weight_decay
+            )
+        ]
+
+
 class CIFAR10_VGG_Model(Model):
-    def __init__(self, bits, dropout=0.5, weight_decay=0, stochastic=False):
-        super().__init__(bits, [None, 32, 32, 3], dropout, weight_decay, stochastic)
+    def __init__(self, bits, dropout=0.5, weight_decay=0, stochastic=False, training=True):
+        super().__init__(bits, [None, 32, 32, 3], dropout, weight_decay, stochastic, training)
 
     def get_layers(self):
         return [
@@ -345,16 +404,16 @@ class CIFAR10_VGG_Model(Model):
             ),
             dfxp.ReLU_q(),
 
-            # dense2
-            dfxp.Dropout_q(self.dropout, self.training),
-            dfxp.Dense_q(
-                name='dense2',
-                bits=self.bits,
-                in_units=1024,
-                units=1024,
-                weight_decay=self.weight_decay,
-            ),
-            dfxp.ReLU_q(),
+            # # dense2
+            # dfxp.Dropout_q(self.dropout, self.training),
+            # dfxp.Dense_q(
+            #     name='dense2',
+            #     bits=self.bits,
+            #     in_units=1024,
+            #     units=1024,
+            #     weight_decay=self.weight_decay,
+            # ),
+            # dfxp.ReLU_q(),
 
             # softmax
             dfxp.Dropout_q(self.dropout, self.training),
@@ -369,10 +428,10 @@ class CIFAR10_VGG_Model(Model):
 
 
 class CIFAR10_Resnet(Model):
-    def __init__(self, bits, num_blocks, block, dropout=0.5, weight_decay=0, stochastic=False):
+    def __init__(self, bits, num_blocks, block, dropout=0.5, weight_decay=0, stochastic=False, training=True):
         self.num_blocks = num_blocks
         self.block = block
-        super().__init__(bits, [None, 32, 32, 3], dropout, weight_decay, stochastic)
+        super().__init__(bits, [None, 32, 32, 3], dropout, weight_decay, stochastic, training)
 
     def _build_blocks(self, channels, num_blocks, stride):
         # blocks = [dfxp.Dropout_q(self.dropout, self.training)]
@@ -395,7 +454,7 @@ class CIFAR10_Resnet(Model):
     def get_layers(self):
         self.channels = 16
         return [
-            dfxp.Conv2d_pq(
+            dfxp.Conv2d_q(
                 name='conv1',
                 bits=self.bits,
                 ksize=[3, 3, 3, 16],
@@ -404,11 +463,6 @@ class CIFAR10_Resnet(Model):
                 use_bias=False,
                 weight_decay=self.weight_decay,
             ),
-            # dfxp.GradientBuffer_q(
-            #     name='grad_buffer',
-            #     bits=self.bits,
-            #     shape=[32, 32, 32, 16],
-            # ),
             dfxp.BatchNorm_q(
                 name='conv1-bn',
                 bits=self.bits,
@@ -435,36 +489,124 @@ class CIFAR10_Resnet(Model):
                 use_bias=False,
                 weight_decay=self.weight_decay,
             ),
-            # dfxp.GradientBuffer_q(
-            #     name='gradient_buffer',
-            #     bits=self.bits,
-            #     shape=[32, 10], # TODO use batch size
-            # ),
-            # dfxp.BatchNorm_q(
-            #     name='softmax-bn',
-            #     bits=self.bits,
-            #     num_features=10,
-            #     training=self.training,
-            #     weight_decay=self.weight_decay,
-            # ),
+            dfxp.BatchNorm_q(
+                name='softmax-bn',
+                bits=self.bits,
+                num_features=10,
+                training=self.training,
+                weight_decay=self.weight_decay,
+            ),
         ]
 
 
-def CIFAR10_Resnet20(bits, dropout=0.5, weight_decay=0, stochastic=False):
+def CIFAR10_Resnet20(bits, dropout=0.5, weight_decay=0, stochastic=False, training=True):
     return CIFAR10_Resnet(bits, [3, 3, 3],
-        dfxp.ResidualBlock_q, dropout, weight_decay, stochastic)
+        dfxp.ResidualBlock_q, dropout, weight_decay, stochastic, training)
 
 
-def CIFAR10_Resnet32(bits, dropout=0.5, weight_decay=0, stochastic=False):
+def CIFAR10_Resnet32(bits, dropout=0.5, weight_decay=0, stochastic=False, training=True):
     return CIFAR10_Resnet(bits, [5, 5, 5],
-        dfxp.ResidualBlock_q, dropout, weight_decay, stochastic)
+        dfxp.ResidualBlock_q, dropout, weight_decay, stochastic, training)
 
 
-def CIFAR10_Resnet44(bits, dropout=0.5, weight_decay=0, stochastic=False):
+def CIFAR10_Resnet44(bits, dropout=0.5, weight_decay=0, stochastic=False, training=True):
     return CIFAR10_Resnet(bits, [7, 7, 7],
-        dfxp.ResidualBlock_q, dropout, weight_decay, stochastic)
+        dfxp.ResidualBlock_q, dropout, weight_decay, stochastic, training)
 
 
-def CIFAR10_Resnet56(bits, dropout=0.5, weight_decay=0, stochastic=False):
+def CIFAR10_Resnet56(bits, dropout=0.5, weight_decay=0, stochastic=False, training=True):
     return CIFAR10_Resnet(bits, [9, 9, 9],
-        dfxp.ResidualBlock_q, dropout, weight_decay, stochastic)
+        dfxp.ResidualBlock_q, dropout, weight_decay, stochastic, training)
+
+
+class ImageNet_Resnet(Model):
+    def __init__(self, bits, num_blocks, block, dropout=0.5, weight_decay=0, stochastic=False, training=True):
+        self.num_blocks = num_blocks
+        self.block = block
+        super().__init__(bits, [None, 3, 224, 224], dropout, weight_decay, stochastic, training)
+
+    def _build_blocks(self, channels, num_blocks, stride):
+        # blocks = [dfxp.Dropout_q(self.dropout, self.training)]
+        blocks = []
+        for i in range(1, 1+num_blocks):
+            blocks.append(
+                self.block(
+                    name='block%d-%d' % (channels, i),
+                    bits=self.bits,
+                    in_channels=self.channels,
+                    channels=channels,
+                    stride=1 if i>1 else stride,
+                    training=self.training,
+                    weight_decay=self.weight_decay,
+                    decay_bn=False,
+                )
+            )
+            self.channels = channels * self.block.expansion
+        return blocks
+
+    def get_layers(self):
+        self.channels = 64
+        return [
+            dfxp.Conv2d_q(
+                name='conv1',
+                bits=self.bits,
+                ksize=[7, 7, 3, 64],
+                strides=[1, 2, 2, 1],
+                padding='SAME',
+                use_bias=False,
+                weight_decay=self.weight_decay,
+            ),
+            dfxp.BatchNorm_q(
+                name='conv1-bn',
+                bits=self.bits,
+                num_features=64,
+                training=self.training,
+                # weight_decay=self.weight_decay,
+            ),
+            dfxp.ReLU_q(),
+            dfxp.MaxPool_q(
+                ksize=[1, 3, 3, 1],
+                strides=[1, 2, 2, 1],
+                padding='SAME'
+            ),
+        ] + self._build_blocks(64, self.num_blocks[0], 1) \
+          + self._build_blocks(128, self.num_blocks[1], 2) \
+          + self._build_blocks(256, self.num_blocks[2], 2) \
+          + self._build_blocks(512, self.num_blocks[3], 2) \
+          + [
+            dfxp.GlobalAvgPool_q(),
+            dfxp.Dense_q(
+                name='softmax',
+                bits=self.bits,
+                in_units=512 * self.block.expansion,
+                units=1000,
+                use_bias=False,
+                weight_decay=self.weight_decay,
+            ),
+        ]
+
+
+def ImageNet_Resnet18(bits, dropout=0.5, weight_decay=0, stochastic=False, training=True):
+    return ImageNet_Resnet(bits, [2, 2, 2, 2],
+        dfxp.ResidualBlock_q, dropout, weight_decay, stochastic, training)
+
+
+def ImageNet_Resnet34(bits, dropout=0.5, weight_decay=0, stochastic=False, training=True):
+    return ImageNet_Resnet(bits, [3, 4, 6, 3],
+        dfxp.ResidualBlock_q, dropout, weight_decay, stochastic, training)
+
+def ImageNet_Resnet50(bits, dropout=0.5, weight_decay=0, stochastic=False, training=True):
+    return ImageNet_Resnet(bits, [3, 4, 6, 3],
+        dfxp.ResidualBottleneck_q, dropout, weight_decay, stochastic, training)
+
+def ImageNet_Resnet101(bits, dropout=0.5, weight_decay=0, stochastic=False, training=True):
+    return ImageNet_Resnet(bits, [3, 4, 23, 3],
+        dfxp.ResidualBottleneck_q, dropout, weight_decay, stochastic, training)
+
+def ImageNet_Resnet152(bits, dropout=0.5, weight_decay=0, stochastic=False, training=True):
+    return ImageNet_Resnet(bits, [3, 8, 36, 3],
+        dfxp.ResidualBottleneck_q, dropout, weight_decay, stochastic, training)
+
+def ImageNet_Resnet200(bits, dropout=0.5, weight_decay=0, stochastic=False, training=True):
+    return ImageNet_Resnet(bits, [3, 24, 36, 3],
+        dfxp.ResidualBottleneck_q, dropout, weight_decay, stochastic, training)
