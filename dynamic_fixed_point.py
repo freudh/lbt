@@ -277,6 +277,7 @@ class Dense_q(Layer_q):
         return self.y
 
     def backward(self, grad, stochastic):
+        self.grad = grad
         self.gradq = weight_quantization(grad, self.target_overflow_rate,
             self.bits, self.grad_step, stochastic=stochastic)
         self.dW = tf.gradients(self.y, self.W, self.gradq)[0] + 2 * self.weight_decay * self.W
