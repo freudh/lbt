@@ -12,7 +12,7 @@ def conv5x5(bits, in_channels, out_channels, stride=1):
         stride=stride, padding=1, bias=False)
 
 
-class CUSTOM_MNIST(nn.module):
+class CUSTOM_MNIST(nn.Module):
     cfg = {
         'custom': [
             6, 'M',
